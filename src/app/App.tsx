@@ -16,7 +16,7 @@ function Header({ state }: { state: AuctionHarnessState }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-4">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">M10 playable auction</p>
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">M11 playable auction + match</p>
         <h1 className="text-2xl font-black uppercase tracking-wide text-white">Chennai Sixes Auction</h1>
       </div>
       {auction && (
@@ -280,6 +280,54 @@ function Controls({ auction, feedback, bid, pass, notInterested }: {
   )
 }
 
+function ExhibitionMatch({ state }: { state: AuctionHarnessState }) {
+  const auction = state.auction!
+  const [teamAId, setTeamAId] = useState<TeamId>(auction.teams[0].teamId)
+  const [teamBId, setTeamBId] = useState<TeamId>(auction.teams[1].teamId)
+  const result = state.lastMatch
+  const margin = result?.margin.type === 'TIEBREAK'
+    ? 'won after a tiebreak'
+    : result === null
+      ? ''
+      : `won by ${result.margin.value} ${
+          result.margin.type === 'RUNS'
+            ? result.margin.value === 1 ? 'run' : 'runs'
+            : result.margin.value === 1 ? 'wicket' : 'wickets'
+        }`
+
+  return (
+    <section className="mb-5 rounded-lg border border-cyan-500/60 bg-cyan-950/40 p-5" aria-labelledby="exhibition-title">
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="mr-auto">
+          <h2 className="text-xl font-black uppercase tracking-wide text-cyan-200" id="exhibition-title">Development Match Tester</h2>
+          <p className="mt-1 text-sm text-slate-400">Automatic five-over exhibition using each team&apos;s Best Six.</p>
+        </div>
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-400" htmlFor="match-team-a">Team A</label>
+          <select className="mt-1 rounded border border-slate-600 bg-slate-950 px-3 py-2 font-semibold text-white" id="match-team-a" onChange={(event) => setTeamAId(event.target.value)} value={teamAId}>
+            {auction.teams.map((team) => <option key={team.teamId} value={team.teamId}>{teamName(team.teamId)}</option>)}
+          </select>
+        </div>
+        <span className="pb-2 font-black text-slate-500">VS</span>
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-400" htmlFor="match-team-b">Team B</label>
+          <select className="mt-1 rounded border border-slate-600 bg-slate-950 px-3 py-2 font-semibold text-white" id="match-team-b" onChange={(event) => setTeamBId(event.target.value)} value={teamBId}>
+            {auction.teams.map((team) => <option key={team.teamId} value={team.teamId}>{teamName(team.teamId)}</option>)}
+          </select>
+        </div>
+        <button className="rounded bg-cyan-400 px-5 py-2.5 font-black text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-40" disabled={teamAId === teamBId} onClick={() => state.simulateExhibition(teamAId, teamBId)}>SIMULATE MATCH</button>
+      </div>
+      {result !== null && (
+        <div className="mt-5 grid gap-3 border-t border-cyan-800 pt-5 md:grid-cols-3" role="status" aria-label="Exhibition match result">
+          <div className="rounded bg-slate-950/60 p-4"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">First innings</span><strong className="mt-1 block text-xl text-white">{teamName(result.firstInnings.teamId)} {result.firstInnings.runs}/{result.firstInnings.wickets} ({result.firstInnings.overs} ov)</strong></div>
+          <div className="rounded bg-slate-950/60 p-4"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Second innings</span><strong className="mt-1 block text-xl text-white">{teamName(result.secondInnings.teamId)} {result.secondInnings.runs}/{result.secondInnings.wickets} ({result.secondInnings.overs} ov)</strong></div>
+          <div className="rounded bg-emerald-950/70 p-4"><span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Winner</span><strong className="mt-1 block text-xl text-emerald-200">{teamName(result.winnerTeamId)} {margin}</strong></div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function Auction({ state }: { state: AuctionHarnessState }) {
   const { auction, lastResult } = state
   const [selectedTeamId, setSelectedTeamId] = useState<TeamId>('team-a')
@@ -291,6 +339,7 @@ function Auction({ state }: { state: AuctionHarnessState }) {
   return (
     <div className="mt-5">
       {auction.status === 'COMPLETE' && <section className="mb-5 rounded border border-emerald-500 bg-emerald-950 p-6 text-center"><h2 className="text-3xl font-black text-emerald-200">AUCTION COMPLETE</h2><p className="mt-2 text-emerald-100">Emergency assignments are complete. Every team now has at least six available players.</p></section>}
+      {auction.status === 'COMPLETE' && <ExhibitionMatch state={state} />}
       <EmergencySignings auction={auction} />
       {auction.phase === 'ROUND_2' && <p role="status" className="mb-4 rounded border border-violet-500 bg-violet-950 p-3 text-center font-bold text-violet-200">Round 2 has started — unsold players return with no base price.</p>}
       {lastResultText && <p role="status" className="mb-4 rounded border border-amber-500 bg-amber-950 p-3 text-center font-bold text-amber-200">{lastResultText}</p>}

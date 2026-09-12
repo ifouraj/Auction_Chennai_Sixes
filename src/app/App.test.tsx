@@ -139,4 +139,35 @@ describe('M9 human vs AI auction harness', () => {
     expect(screen.queryByLabelText('Auction controls')).not.toBeInTheDocument()
     expect(within(emergencyPanel).queryByRole('button')).not.toBeInTheDocument()
   })
+
+  it('runs and displays a compact exhibition match after auction completion', () => {
+    const { store } = createAndStart(202611)
+
+    act(() => {
+      let ticks = 0
+      while (store.getState().auction?.status === 'IN_PROGRESS' && ticks < 3_000) {
+        store.getState().tick()
+        ticks += 1
+      }
+    })
+
+    const tester = screen.getByRole('heading', {
+      name: 'Development Match Tester',
+    }).closest('section')!
+    expect(tester).toBeInTheDocument()
+    expect(within(tester).getByLabelText('Team A')).toHaveValue('team-a')
+    expect(within(tester).getByLabelText('Team B')).toHaveValue('team-b')
+
+    fireEvent.click(within(tester).getByRole('button', { name: 'SIMULATE MATCH' }))
+
+    const result = within(tester).getByRole('status', {
+      name: 'Exhibition match result',
+    })
+    expect(store.getState().lastMatch).not.toBeNull()
+    expect(within(result).getByText('First innings')).toBeInTheDocument()
+    expect(within(result).getByText('Second innings')).toBeInTheDocument()
+    expect(within(result).getByText('Winner')).toBeInTheDocument()
+    expect(result).toHaveTextContent(/Team [AB] \d+\/\d+ \(\d\.\d ov\)/)
+    expect(result).toHaveTextContent(/won by|won after a tiebreak/)
+  })
 })

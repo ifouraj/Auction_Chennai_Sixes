@@ -1,6 +1,6 @@
 # Chennai Sixes Auction
 
-Playable M10 foundation for the Chennai Sixes Auction web game: one local human competes with three seeded, personality-driven AI bidders through the complete two-round auction, followed by automatic emergency signings for incomplete squads.
+Playable M11 foundation for the Chennai Sixes Auction web game: one local human competes with three seeded, personality-driven AI bidders through the complete two-round auction, followed by automatic emergency signings and deterministic five-over exhibition matches between completed automatic Best Six squads.
 
 ## Prerequisites
 
@@ -65,4 +65,6 @@ The project follows the Technical Design Document's layer boundaries:
 - `src/lib` contains external-client setup and shared infrastructure.
 - `src/tests` contains shared test setup plus future integration tests.
 
-M2-M10 currently provide the fictional normal-player catalog, seeded player pool and private order, authoritative auction/bank/timer rules, Round 2, live team strength and automatic Best Six, the playable auction harness, pure TypeScript AI bidding, and deterministic free emergency assignments from a separate punishment-player catalog. Match simulation, tournament play, persistence, multiplayer, and final presentation remain later milestones.
+M2-M11 currently provide the fictional normal-player catalog, seeded player pool and private order, authoritative auction/bank/timer rules, Round 2, live team strength and automatic Best Six, the playable auction harness, pure TypeScript AI bidding, deterministic free emergency assignments from a separate punishment-player catalog, and a pure seeded Sixes match simulator. The post-auction development tester can run compact team-total exhibition matches; league/tournament play, persistence, multiplayer, and final presentation remain later milestones.
+
+The M11 simulator resolves 30-ball innings from direct BAT-vs-BOWL interactions, with smaller WK, LEAD, chase-pressure, and bounded form effects. It exposes only innings totals and a decisive result; there are no auction-price inputs, manual cricket controls, or individual scorecards. Major coefficients are centralized in `MATCH_SIMULATION_CONFIG` for M15 balancing.
