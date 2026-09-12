@@ -1,5 +1,6 @@
 import type { AuctionCardState, Round1AuctionState } from './auctionEngine'
 import type { Money, TeamId } from '../domain/types'
+import { TARGET_NORMAL_SQUAD_SIZE } from '../domain/constants'
 
 export type BidValidationResult =
   | { readonly ok: true }
@@ -13,6 +14,8 @@ export type BidValidationResult =
         | 'BID_MUST_BE_INTEGER'
         | 'BID_BELOW_BASE_PRICE'
         | 'BID_MUST_EXCEED_CURRENT'
+        | 'BID_EXCEEDS_BALANCE'
+        | 'BID_MUST_LEAVE_NON_ZERO_BALANCE'
     }
 
 function validateCardBid(
@@ -32,7 +35,7 @@ function validateCardBid(
     return { ok: false, reason: 'HIGHEST_BIDDER_CANNOT_RAISE_SELF' }
   }
 
-  if (!Number.isInteger(amount)) {
+  if (!Number.isSafeInteger(amount)) {
     return { ok: false, reason: 'BID_MUST_BE_INTEGER' }
   }
 
@@ -56,5 +59,26 @@ export function validateBid(
     return { ok: false, reason: 'AUCTION_NOT_ACTIVE' }
   }
 
-  return validateCardBid(state.currentCard, teamId, amount)
+  const cardValidation = validateCardBid(state.currentCard, teamId, amount)
+  if (!cardValidation.ok) {
+    return cardValidation
+  }
+
+  const team = state.teams.find((candidate) => candidate.teamId === teamId)
+  if (team === undefined) {
+    return { ok: false, reason: 'NOT_ACTIVE_TEAM' }
+  }
+
+  if (amount > team.balance) {
+    return { ok: false, reason: 'BID_EXCEEDS_BALANCE' }
+  }
+
+  if (
+    team.purchasedPlayerCount < TARGET_NORMAL_SQUAD_SIZE - 1 &&
+    amount === team.balance
+  ) {
+    return { ok: false, reason: 'BID_MUST_LEAVE_NON_ZERO_BALANCE' }
+  }
+
+  return { ok: true }
 }
