@@ -1,6 +1,11 @@
 export type PlayerId = string
+export type TeamId = string
+export type ParticipantId = string
 export type Money = number
 export type SkillRating = number
+
+export type SeatIndex = 0 | 1 | 2 | 3
+export type ParticipantKind = 'HUMAN_LOCAL' | 'AI' | 'HUMAN_REMOTE'
 
 export interface Player {
   readonly id: PlayerId
@@ -23,4 +28,12 @@ export interface PlayerPool {
   readonly selectedPool: readonly Player[]
   /** Private Round 1 appearance order. Do not expose through UI selectors. */
   readonly auctionQueue: readonly Player[]
+}
+
+/** A controller occupying a team seat. Auction rules do not depend on its kind. */
+export interface AuctionParticipant {
+  readonly id: ParticipantId
+  readonly teamId: TeamId
+  readonly seatIndex: SeatIndex
+  readonly kind: ParticipantKind
 }
