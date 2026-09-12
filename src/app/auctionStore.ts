@@ -2,6 +2,12 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand'
 
 import type { AuctionParticipant, Player, PlayerPool, TeamId } from '../domain/types'
 import {
+  createAIAuctionDecisionContext,
+  createAIDecisionRandom,
+  evaluateAuctionDecision,
+  type AIDecisionEvaluation,
+} from '../engine/aiBidding'
+import {
   advanceTurnTimer,
   AuctionRuleError,
   getPublicAuctionState,
@@ -15,12 +21,20 @@ import {
 } from '../engine/auctionEngine'
 import { createM2PlayerPool } from '../engine/playerPool'
 
-export const HARNESS_PARTICIPANTS: readonly AuctionParticipant[] = [
+export const DEFAULT_PARTICIPANTS: readonly AuctionParticipant[] = [
   { id: 'participant-a', teamId: 'team-a', seatIndex: 0, kind: 'HUMAN_LOCAL' },
-  { id: 'participant-b', teamId: 'team-b', seatIndex: 1, kind: 'HUMAN_LOCAL' },
-  { id: 'participant-c', teamId: 'team-c', seatIndex: 2, kind: 'HUMAN_LOCAL' },
-  { id: 'participant-d', teamId: 'team-d', seatIndex: 3, kind: 'HUMAN_LOCAL' },
+  { id: 'participant-b', teamId: 'team-b', seatIndex: 1, kind: 'AI' },
+  { id: 'participant-c', teamId: 'team-c', seatIndex: 2, kind: 'AI' },
+  { id: 'participant-d', teamId: 'team-d', seatIndex: 3, kind: 'AI' },
 ]
+
+export interface AITurnIdentity {
+  readonly gameId: number
+  readonly round: 1 | 2
+  readonly cardNumber: number
+  readonly teamId: TeamId
+  readonly highestBid: number | null
+}
 
 export const TEAM_NAMES: Readonly<Record<TeamId, string>> = {
   'team-a': 'Team A',
@@ -36,12 +50,15 @@ export interface AuctionHarnessState {
   readonly selectedPool: readonly Player[]
   readonly auction: PublicAuctionState | null
   readonly lastResult: AuctionCardResult | null
+  readonly lastAiDecision: AIDecisionEvaluation | null
   readonly feedback: string | null
+  readonly gameId: number
   createGame: (seed?: number) => void
   startAuction: () => void
   bid: (amount: number) => void
   pass: () => void
   notInterested: () => void
+  actForAI: (expectedTurn: AITurnIdentity) => void
   tick: () => void
 }
 
@@ -81,14 +98,21 @@ export function createAuctionHarnessStore(
 ): UseBoundStore<StoreApi<AuctionHarnessState>> {
   let pendingPool: PlayerPool | null = null
   let engineState: AuctionState | null = null
+  let decisionRandom = createAIDecisionRandom(initialSeed ?? 0)
+  let gameId = 0
 
   return create<AuctionHarnessState>((set) => {
     const applyEngineCommand = (
       command: (state: AuctionState, teamId: TeamId) => AuctionState,
+      expectedKind?: AuctionParticipant['kind'],
     ): void => {
       if (engineState === null || engineState.currentCard === null) return
       const before = engineState
       const activeTeamId = engineState.currentCard.activeTeamId
+      const participant = engineState.participants.find(
+        (candidate) => candidate.teamId === activeTeamId,
+      )
+      if (expectedKind !== undefined && participant?.kind !== expectedKind) return
       try {
         engineState = command(before, activeTeamId)
         set({
@@ -106,31 +130,80 @@ export function createAuctionHarnessStore(
       selectedPool: [],
       auction: null,
       lastResult: null,
+      lastAiDecision: null,
       feedback: null,
+      gameId,
       createGame: (seed = initialSeed ?? Date.now()) => {
+        gameId += 1
         pendingPool = createM2PlayerPool(seed)
         engineState = null
+        decisionRandom = createAIDecisionRandom(seed)
         set({
           stage: 'PRE_AUCTION',
           selectedPool: pendingPool.selectedPool,
           auction: null,
           lastResult: null,
+          lastAiDecision: null,
           feedback: null,
+          gameId,
         })
       },
       startAuction: () => {
         if (pendingPool === null) return
-        engineState = startRound1Auction(pendingPool, HARNESS_PARTICIPANTS)
+        engineState = startRound1Auction(pendingPool, DEFAULT_PARTICIPANTS)
         set({
           stage: 'AUCTION',
           auction: getPublicAuctionState(engineState),
           lastResult: null,
+          lastAiDecision: null,
           feedback: null,
         })
       },
-      bid: (amount) => applyEngineCommand((state, teamId) => placeBid(state, teamId, amount)),
-      pass: () => applyEngineCommand(passTurn),
-      notInterested: () => applyEngineCommand(markNotInterested),
+      bid: (amount) => applyEngineCommand(
+        (state, teamId) => placeBid(state, teamId, amount),
+        'HUMAN_LOCAL',
+      ),
+      pass: () => applyEngineCommand(passTurn, 'HUMAN_LOCAL'),
+      notInterested: () => applyEngineCommand(markNotInterested, 'HUMAN_LOCAL'),
+      actForAI: (expectedTurn) => {
+        if (
+          engineState === null ||
+          engineState.currentCard === null ||
+          expectedTurn.gameId !== gameId ||
+          engineState.round !== expectedTurn.round ||
+          engineState.currentCard.cardNumber !== expectedTurn.cardNumber ||
+          engineState.currentCard.activeTeamId !== expectedTurn.teamId ||
+          engineState.currentCard.highestBid !== expectedTurn.highestBid
+        ) return
+        const participant = engineState.participants.find(
+          ({ teamId }) => teamId === expectedTurn.teamId,
+        )
+        const personality = engineState.aiPersonalities[expectedTurn.teamId]
+        if (participant?.kind !== 'AI' || personality === undefined) return
+
+        const publicState = getPublicAuctionState(engineState)
+        const evaluation = evaluateAuctionDecision(
+          createAIAuctionDecisionContext(publicState, expectedTurn.teamId),
+          personality,
+          decisionRandom,
+        )
+        const before = engineState
+        try {
+          engineState = evaluation.action.type === 'BID'
+            ? placeBid(before, expectedTurn.teamId, evaluation.action.amount)
+            : evaluation.action.type === 'PASS'
+              ? passTurn(before, expectedTurn.teamId)
+              : markNotInterested(before, expectedTurn.teamId)
+          set({
+            auction: getPublicAuctionState(engineState),
+            lastResult: resultAfterAction(before, engineState),
+            lastAiDecision: evaluation,
+            feedback: null,
+          })
+        } catch (error) {
+          set({ feedback: friendlyError(error), lastAiDecision: evaluation })
+        }
+      },
       tick: () => {
         if (engineState === null || engineState.status !== 'IN_PROGRESS') return
         const before = engineState

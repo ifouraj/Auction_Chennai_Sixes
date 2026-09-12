@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { AI_PRESENTATION_DELAY_MS } from '../domain/constants'
 import type { AuctionParticipant, TeamId } from '../domain/types'
 import type { PublicAuctionState, PublicAuctionTeamState } from '../engine/auctionEngine'
 import { TEAM_NAMES, useAuctionHarness, type AuctionHarnessState } from './auctionStore'
@@ -15,7 +16,7 @@ function Header({ state }: { state: AuctionHarnessState }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-4">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">M6.5 playable harness</p>
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">M9 playable auction</p>
         <h1 className="text-2xl font-black uppercase tracking-wide text-white">Chennai Sixes Auction</h1>
       </div>
       {auction && (
@@ -35,8 +36,8 @@ function Welcome({ createGame }: { createGame: () => void }) {
   return (
     <section className="grid min-h-[65vh] place-items-center text-center">
       <div>
-        <h2 className="text-2xl font-bold">Manual four-team auction testing</h2>
-        <p className="mt-2 max-w-xl text-slate-400">One tester controls the active seat. The existing deterministic engine owns every auction rule.</p>
+        <h2 className="text-2xl font-bold">Human vs three AI bidders</h2>
+        <p className="mt-2 max-w-xl text-slate-400">You control Team A. Three seeded AI bidders control the remaining seats under the same auction rules.</p>
         <button className="mt-6 rounded bg-cyan-500 px-6 py-3 font-bold text-slate-950 hover:bg-cyan-400" onClick={() => createGame()}>
           Start New Auction Game
         </button>
@@ -119,7 +120,7 @@ function TeamCard({ auction, team, selected, onSelect }: {
             </div>
           ))}
         </dl>
-        <span className="mt-2 block text-xs text-slate-500">Seat {(participant?.seatIndex ?? 0) + 1} · Select purchases</span>
+        <span className="mt-2 block text-xs text-slate-500">Seat {(participant?.seatIndex ?? 0) + 1} · {participant?.kind === 'AI' ? 'AI' : 'Human'} · Select purchases</span>
       </button>
       {isActive && (
         <div className="mt-3 flex items-end justify-between border-t border-cyan-800 pt-3">
@@ -217,6 +218,8 @@ function Controls({ auction, feedback, bid, pass, notInterested }: {
   const suggestedBid = card?.highestBid === null ? (card.basePrice ?? 1) : (card?.highestBid ?? 0) + 1
   const [amount, setAmount] = useState(String(suggestedBid))
   if (card === null) return null
+  const activeParticipant = participantForTeam(auction.participants, card.activeTeamId)
+  const isHumanTurn = activeParticipant?.kind === 'HUMAN_LOCAL'
   return (
     <section className="border-t border-cyan-800 bg-slate-900 px-4 py-4" aria-label="Auction controls">
       <div className="mx-auto flex max-w-[1500px] flex-wrap items-end gap-4">
@@ -227,12 +230,13 @@ function Controls({ auction, feedback, bid, pass, notInterested }: {
         </div>
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-500" htmlFor="bid-amount">Bid amount · <span>{teamName(card.activeTeamId)}</span></label>
-          <input aria-label="Bid amount" className="mt-1 w-36 rounded border border-slate-600 bg-slate-950 px-3 py-2 text-lg font-bold text-white" id="bid-amount" inputMode="numeric" onChange={(event) => setAmount(event.target.value)} step="1" type="number" value={amount} />
+          <input aria-label="Bid amount" className="mt-1 w-36 rounded border border-slate-600 bg-slate-950 px-3 py-2 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!isHumanTurn} id="bid-amount" inputMode="numeric" onChange={(event) => setAmount(event.target.value)} step="1" type="number" value={amount} />
         </div>
-        <button className="rounded bg-emerald-500 px-6 py-3 font-black text-slate-950 hover:bg-emerald-400" onClick={() => bid(Number(amount))}>BID</button>
-        <button className="rounded bg-amber-500 px-6 py-3 font-black text-slate-950 hover:bg-amber-400" onClick={pass}>PASS</button>
-        <button className="rounded bg-rose-500 px-6 py-3 font-black text-white hover:bg-rose-400" onClick={notInterested}>NOT INTERESTED</button>
+        <button className="rounded bg-emerald-500 px-6 py-3 font-black text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40" disabled={!isHumanTurn} onClick={() => bid(Number(amount))}>BID</button>
+        <button className="rounded bg-amber-500 px-6 py-3 font-black text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40" disabled={!isHumanTurn} onClick={pass}>PASS</button>
+        <button className="rounded bg-rose-500 px-6 py-3 font-black text-white hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-40" disabled={!isHumanTurn} onClick={notInterested}>NOT INTERESTED</button>
       </div>
+      {!isHumanTurn && <p role="status" className="mx-auto mt-3 max-w-[1500px] text-sm font-bold text-cyan-300">{teamName(card.activeTeamId)} AI is deciding…</p>}
       {feedback && <p role="alert" className="mx-auto mt-3 max-w-[1500px] rounded bg-rose-950 p-3 text-rose-200">{feedback}</p>}
     </section>
   )
@@ -275,6 +279,30 @@ export function AuctionHarnessApp({ store = useAuctionHarness }: { store?: Harne
     const interval = window.setInterval(() => store.getState().tick(), 1_000)
     return () => window.clearInterval(interval)
   }, [state.stage, state.auction?.status, store])
+  useEffect(() => {
+    const auction = state.auction
+    const card = auction?.currentCard
+    if (
+      state.stage !== 'AUCTION' ||
+      auction?.status !== 'IN_PROGRESS' ||
+      card === null ||
+      card === undefined
+    ) return
+    const participant = participantForTeam(auction.participants, card.activeTeamId)
+    if (participant?.kind !== 'AI') return
+    const expectedTurn = {
+      gameId: state.gameId,
+      round: auction.round,
+      cardNumber: card.cardNumber,
+      teamId: card.activeTeamId,
+      highestBid: card.highestBid,
+    }
+    const timeout = window.setTimeout(
+      () => store.getState().actForAI(expectedTurn),
+      AI_PRESENTATION_DELAY_MS,
+    )
+    return () => window.clearTimeout(timeout)
+  }, [state.stage, state.gameId, state.auction, store])
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-6 text-slate-100">
       <div className="mx-auto max-w-[1500px]">

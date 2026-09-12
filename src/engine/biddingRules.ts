@@ -5,6 +5,14 @@ import {
   TARGET_NORMAL_SQUAD_SIZE,
 } from '../domain/constants'
 
+/** Shared by human validation and AI intent construction. */
+export function getMinimumLegalBid(card: AuctionCardState): Money {
+  if (card.highestBid !== null) {
+    return card.highestBid + MINIMUM_LEGAL_MONEY_UNIT
+  }
+  return card.basePrice ?? MINIMUM_LEGAL_MONEY_UNIT
+}
+
 export type BidValidationResult =
   | { readonly ok: true }
   | {

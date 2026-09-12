@@ -1,6 +1,6 @@
 # Chennai Sixes Auction
 
-Technical foundation for the Chennai Sixes Auction web game. Milestone M1 is a minimal React application; game mechanics are intentionally deferred to later milestones.
+Playable M9 foundation for the Chennai Sixes Auction web game: one local human competes with three seeded, personality-driven AI bidders through the complete two-round auction.
 
 ## Prerequisites
 
@@ -65,4 +65,4 @@ The project follows the Technical Design Document's layer boundaries:
 - `src/lib` contains external-client setup and shared infrastructure.
 - `src/tests` contains shared test setup plus future integration tests.
 
-The M1 application deliberately implements only the title screen. The game engine, catalog, store, repositories, Supabase integration, and all gameplay features remain unimplemented.
+M2-M9 currently provide the fictional player catalog, seeded player pool and private order, authoritative auction/bank/timer rules, Round 2, live team strength and automatic Best Six, the playable auction harness, and pure TypeScript AI bidding. Punishment players, match simulation, tournament play, persistence, multiplayer, and final presentation remain later milestones.

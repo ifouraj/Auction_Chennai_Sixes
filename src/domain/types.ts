@@ -7,6 +7,17 @@ export type SkillRating = number
 export type SeatIndex = 0 | 1 | 2 | 3
 export type ParticipantKind = 'HUMAN_LOCAL' | 'AI' | 'HUMAN_REMOTE'
 
+/** Seeded, per-game bidder tendencies. Values are normalized to the 0..1 range. */
+export interface AIBidderPersonality {
+  readonly aggression: number
+  readonly thrift: number
+  readonly patience: number
+  readonly balancePreference: number
+  readonly denial: number
+  readonly riskTolerance: number
+  readonly volatility: number
+}
+
 export interface Player {
   readonly id: PlayerId
   readonly name: string

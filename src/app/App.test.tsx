@@ -1,34 +1,29 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { AI_PRESENTATION_DELAY_MS } from '../domain/constants'
 import { AuctionHarnessApp } from './App'
 import { createAuctionHarnessStore } from './auctionStore'
-import { calculateTeamStrength } from '../engine/teamStrength'
 
 function renderHarness(seed = 8675309) {
   const store = createAuctionHarnessStore(seed)
-  render(<AuctionHarnessApp store={store} />)
-  return store
+  const rendered = render(<AuctionHarnessApp store={store} />)
+  return { store, ...rendered }
 }
 
 function createAndStart(seed = 8675309) {
-  const store = renderHarness(seed)
+  const harness = renderHarness(seed)
   fireEvent.click(screen.getByRole('button', { name: 'Start New Auction Game' }))
   fireEvent.click(screen.getByRole('button', { name: 'Start Round 1' }))
-  return store
+  return harness
 }
 
-function passCurrentCard(store: ReturnType<typeof createAuctionHarnessStore>) {
-  const startingResultCount = store.getState().auction!.results.length
-  while (store.getState().auction!.results.length === startingResultCount) {
-    store.getState().pass()
-  }
-}
+describe('M9 human vs AI auction harness', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
 
-describe('M6.5 auction harness', () => {
-  it('creates a game and shows all 25 selected players before auction', () => {
-    const store = renderHarness()
-
+  it('creates a game and shows all 25 public selected players', () => {
+    const { store } = renderHarness()
     fireEvent.click(screen.getByRole('button', { name: 'Start New Auction Game' }))
 
     expect(store.getState().stage).toBe('PRE_AUCTION')
@@ -36,112 +31,89 @@ describe('M6.5 auction harness', () => {
     expect(screen.getByRole('button', { name: 'Start Round 1' })).toBeInTheDocument()
   })
 
-  it('starts the engine and renders the current player, four teams, and active participant', () => {
-    const store = createAndStart()
+  it('renders one human seat, three AI seats, current player, and no future-player hint', () => {
+    const { store } = createAndStart()
     const auction = store.getState().auction!
 
-    expect(auction.phase).toBe('ROUND_1')
+    expect(auction.participants.map(({ kind }) => kind)).toEqual([
+      'HUMAN_LOCAL', 'AI', 'AI', 'AI',
+    ])
     expect(screen.getByRole('heading', { name: auction.currentCard!.player.name })).toBeInTheDocument()
-    expect(within(screen.getByLabelText('Auction controls')).getByText('Team A')).toBeInTheDocument()
     const teams = within(screen.getByLabelText('Four teams')).getAllByRole('article')
     expect(teams).toHaveLength(4)
-    expect(within(teams[0]).getByLabelText('Seconds remaining')).toHaveTextContent('10s')
-    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveLength(4)
-    expect(screen.getByRole('heading', { name: 'Auction History' })).toBeInTheDocument()
+    expect(within(teams[0]).getByText(/Seat 1 · Human/)).toBeInTheDocument()
+    expect(within(teams[1]).getByText(/Seat 2 · AI/)).toBeInTheDocument()
     expect(screen.queryByText(/Up Next/i)).not.toBeInTheDocument()
-    for (const name of ['Team A', 'Team B', 'Team C', 'Team D']) {
-      const strength = screen.getByRole('group', { name: `${name} strength` })
-      expect(
-        within(strength).getAllByRole('term').map((term) => term.textContent),
-      ).toEqual(['BAT', 'BOWL', 'WK', 'LEAD', 'Overall'])
-      expect(
-        within(strength)
-          .getAllByRole('definition')
-          .map((value) => value.textContent),
-      ).toEqual(['0', '0', '0', '0', '0'])
-    }
   })
 
-  it('dispatches BID, PASS, and NOT INTERESTED through the engine', () => {
-    const store = createAndStart()
+  it('keeps human controls enabled and routes a human bid through the engine', () => {
+    const { store } = createAndStart()
     const openingBid = store.getState().auction!.currentCard!.basePrice!
+    const controls = screen.getByLabelText('Auction controls')
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Bid amount' }), { target: { value: openingBid } })
-    fireEvent.click(screen.getByRole('button', { name: 'BID' }))
-    expect(store.getState().auction!.currentCard).toMatchObject({ highestBid: openingBid, highestBidderId: 'team-a', activeTeamId: 'team-b' })
+    expect(within(controls).getByRole('button', { name: 'BID' })).toBeEnabled()
+    expect(within(controls).getByRole('button', { name: 'PASS' })).toBeEnabled()
+    expect(within(controls).getByRole('button', { name: 'NOT INTERESTED' })).toBeEnabled()
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Bid amount' }), {
+      target: { value: openingBid },
+    })
+    fireEvent.click(within(controls).getByRole('button', { name: 'BID' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
-    expect(store.getState().auction!.currentCard!.passedThisCycleTeamIds).toContain('team-b')
-
-    fireEvent.click(screen.getByRole('button', { name: 'NOT INTERESTED' }))
-    expect(store.getState().auction!.currentCard!.notInterestedTeamIds).toContain('team-c')
+    expect(store.getState().auction!.currentCard).toMatchObject({
+      highestBid: openingBid,
+      highestBidderId: 'team-a',
+      activeTeamId: 'team-b',
+    })
   })
 
-  it('displays engine validation feedback for an invalid bid', () => {
-    const store = createAndStart()
-    const basePrice = store.getState().auction!.currentCard!.basePrice!
+  it('disables all human controls and shows deciding feedback during an AI turn', () => {
+    createAndStart()
+    fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
+    const controls = screen.getByLabelText('Auction controls')
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Bid amount' }), { target: { value: basePrice - 1 } })
-    fireEvent.click(screen.getByRole('button', { name: 'BID' }))
-
-    expect(screen.getByRole('alert')).toHaveTextContent('below the Round 1 base price')
-    expect(store.getState().auction!.currentCard!.highestBid).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent('Team B AI is deciding')
+    expect(within(controls).getByRole('spinbutton', { name: 'Bid amount' })).toBeDisabled()
+    expect(within(controls).getByRole('button', { name: 'BID' })).toBeDisabled()
+    expect(within(controls).getByRole('button', { name: 'PASS' })).toBeDisabled()
+    expect(within(controls).getByRole('button', { name: 'NOT INTERESTED' })).toBeDisabled()
   })
 
-  it('shows a SOLD result and updated buyer squad', () => {
-    const store = createAndStart()
-    const player = store.getState().auction!.currentCard!.player
-    const price = store.getState().auction!.currentCard!.basePrice!
-
-    fireEvent.click(screen.getByRole('button', { name: 'BID' }))
+  it('automatically advances an AI turn after the presentation delay', () => {
+    const { store } = createAndStart()
     fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
-    fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
-    fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
+    const before = structuredClone(store.getState().auction!.currentCard)
 
-    expect(screen.getByText(new RegExp(`SOLD: ${player.name} to Team A for ${price}`))).toBeInTheDocument()
-    expect(within(screen.getByRole('list', { name: 'Team A purchased players' })).getByText(new RegExp(player.name))).toBeInTheDocument()
-    expect(screen.getByLabelText(`${player.name} is in automatic Best Six`)).toHaveTextContent('BEST SIX')
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
-    expect(within(screen.getByRole('list', { name: 'Auction history' })).getByText(player.name)).toBeInTheDocument()
-    const expectedStrength = calculateTeamStrength([{ player }])
-    const teamAStrength = screen.getByRole('group', { name: 'Team A strength' })
-    expect(
-      within(teamAStrength)
-        .getAllByRole('definition')
-        .map((value) => Number(value.textContent)),
-    ).toEqual([
-      expectedStrength.batting,
-      expectedStrength.bowling,
-      expectedStrength.wicketKeeping,
-      expectedStrength.leadership,
-      expectedStrength.overall,
-    ])
+    act(() => vi.advanceTimersByTime(AI_PRESENTATION_DELAY_MS))
 
-    fireEvent.click(within(screen.getByLabelText('Four teams')).getByRole('button', { name: /Team B/ }))
-    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('team-b')
-    expect(screen.getByText('No players purchased yet.')).toBeInTheDocument()
+    expect(store.getState().lastAiDecision).not.toBeNull()
+    expect(store.getState().auction!.currentCard).not.toEqual(before)
+    expect(store.getState().auction!.currentCard?.lastActionByTeamId['team-b'])
+      .toMatch(/BID|PASS|NOT_INTERESTED/)
   })
 
-  it('shows Round 2 and its no-base-price current player', () => {
-    const store = createAndStart()
+  it('keeps the authoritative ten-second timer functioning', () => {
+    const { store } = createAndStart()
+    expect(store.getState().auction!.turnTimer?.remainingSeconds).toBe(10)
 
-    act(() => {
-      while (store.getState().auction!.round === 1) passCurrentCard(store)
+    act(() => vi.advanceTimersByTime(1_000))
+
+    expect(store.getState().auction!.turnTimer?.remainingSeconds).toBe(9)
+  })
+
+  it('rejects stale AI work after restart and cleans up timers on unmount', () => {
+    const { store, unmount } = createAndStart()
+    fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
+    expect(vi.getTimerCount()).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Game' }))
+    act(() => vi.advanceTimersByTime(AI_PRESENTATION_DELAY_MS * 2))
+    expect(store.getState()).toMatchObject({
+      stage: 'PRE_AUCTION',
+      auction: null,
+      lastAiDecision: null,
     })
 
-    expect(store.getState().auction!.phase).toBe('ROUND_2')
-    expect(screen.getByText(/Round 2 has started/)).toBeInTheDocument()
-    expect(screen.getByText('No base price (Round 2)')).toBeInTheDocument()
-  })
-
-  it('shows COMPLETE after the last Round 2 card resolves', () => {
-    const store = createAndStart()
-
-    act(() => {
-      while (store.getState().auction!.status === 'IN_PROGRESS') passCurrentCard(store)
-    })
-
-    expect(store.getState().auction!.phase).toBe('COMPLETE')
-    expect(screen.getByRole('heading', { name: 'AUCTION COMPLETE' })).toBeInTheDocument()
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

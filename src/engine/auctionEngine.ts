@@ -2,10 +2,10 @@ import {
   AUCTION_POOL_SIZE,
   AUCTION_TURN_SECONDS,
   DEFAULT_STARTING_PURSE,
-  MINIMUM_LEGAL_MONEY_UNIT,
   TARGET_NORMAL_SQUAD_SIZE,
 } from '../domain/constants'
 import type {
+  AIBidderPersonality,
   AuctionParticipant,
   Money,
   Player,
@@ -14,9 +14,10 @@ import type {
   SeatIndex,
   TeamId,
 } from '../domain/types'
-import { validateBid } from './biddingRules'
+import { getMinimumLegalBid, validateBid } from './biddingRules'
 import { calculateBestSix, type BestSixResult } from './bestSix'
 import { createRandomSource } from './random'
+import { generateAIPersonalities } from './aiBidding'
 
 export type AuctionAction = 'BID' | 'PASS' | 'NOT_INTERESTED'
 export type AuctionStatus = 'IN_PROGRESS' | 'COMPLETE'
@@ -95,6 +96,8 @@ export interface AuctionState {
   readonly status: AuctionStatus
   readonly seed: number
   readonly participants: readonly AuctionParticipant[]
+  /** Private tendencies: omitted from the public projection and AI context. */
+  readonly aiPersonalities: Readonly<Partial<Record<TeamId, AIBidderPersonality>>>
   readonly startingPurse: Money
   readonly teams: readonly AuctionTeamState[]
   readonly selectedPool: readonly Player[]
@@ -114,7 +117,7 @@ export type Round1AuctionState = AuctionState
 
 type PublicAuctionStateBase = Omit<
   AuctionState,
-  'privateAuctionQueue' | 'seed' | 'teams'
+  'privateAuctionQueue' | 'seed' | 'aiPersonalities' | 'teams'
 >
 export type PublicRound1AuctionState = PublicAuctionStateBase & {
   readonly teams: readonly PublicAuctionTeamState[]
@@ -233,20 +236,13 @@ function getTeamState(
   return team
 }
 
-function minimumLegalBid(card: AuctionCardState): Money {
-  if (card.highestBid !== null) {
-    return card.highestBid + MINIMUM_LEGAL_MONEY_UNIT
-  }
-  return card.basePrice ?? MINIMUM_LEGAL_MONEY_UNIT
-}
-
 function canTeamAffordLegalBid(
   state: Pick<AuctionState, 'teams'>,
   card: AuctionCardState,
   teamId: TeamId,
 ): boolean {
   const team = getTeamState(state, teamId)
-  const minimumBid = minimumLegalBid(card)
+  const minimumBid = getMinimumLegalBid(card)
 
   return (
     minimumBid <= team.balance &&
@@ -294,6 +290,7 @@ export function startRound1Auction(
     status: 'IN_PROGRESS',
     seed,
     participants: orderedParticipants,
+    aiPersonalities: generateAIPersonalities(seed, orderedParticipants),
     startingPurse: config.startingPurse,
     teams: orderedParticipants.map(({ teamId }) => ({
       teamId,
