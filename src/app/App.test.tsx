@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { AuctionHarnessApp } from './App'
 import { createAuctionHarnessStore } from './auctionStore'
+import { calculateTeamStrength } from '../engine/teamStrength'
 
 function renderHarness(seed = 8675309) {
   const store = createAuctionHarnessStore(seed)
@@ -48,6 +49,17 @@ describe('M6.5 auction harness', () => {
     expect(screen.getByRole('combobox', { name: 'Team' })).toHaveLength(4)
     expect(screen.getByRole('heading', { name: 'Auction History' })).toBeInTheDocument()
     expect(screen.queryByText(/Up Next/i)).not.toBeInTheDocument()
+    for (const name of ['Team A', 'Team B', 'Team C', 'Team D']) {
+      const strength = screen.getByRole('group', { name: `${name} strength` })
+      expect(
+        within(strength).getAllByRole('term').map((term) => term.textContent),
+      ).toEqual(['BAT', 'BOWL', 'WK', 'LEAD', 'Overall'])
+      expect(
+        within(strength)
+          .getAllByRole('definition')
+          .map((value) => value.textContent),
+      ).toEqual(['0', '0', '0', '0', '0'])
+    }
   })
 
   it('dispatches BID, PASS, and NOT INTERESTED through the engine', () => {
@@ -89,6 +101,19 @@ describe('M6.5 auction harness', () => {
     expect(screen.getByText(new RegExp(`SOLD: ${player.name} to Team A for ${price}`))).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Team A purchased players' })).getByText(new RegExp(player.name))).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Auction history' })).getByText(player.name)).toBeInTheDocument()
+    const expectedStrength = calculateTeamStrength([{ player }])
+    const teamAStrength = screen.getByRole('group', { name: 'Team A strength' })
+    expect(
+      within(teamAStrength)
+        .getAllByRole('definition')
+        .map((value) => Number(value.textContent)),
+    ).toEqual([
+      expectedStrength.batting,
+      expectedStrength.bowling,
+      expectedStrength.wicketKeeping,
+      expectedStrength.leadership,
+      expectedStrength.overall,
+    ])
 
     fireEvent.click(within(screen.getByLabelText('Four teams')).getByRole('button', { name: /Team B/ }))
     expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('team-b')

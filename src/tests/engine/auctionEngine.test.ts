@@ -12,6 +12,7 @@ import {
 } from '../../engine/auctionEngine'
 import { validateBid } from '../../engine/biddingRules'
 import { createM2PlayerPool } from '../../engine/playerPool'
+import { calculateTeamStrength } from '../../engine/teamStrength'
 
 const participants: readonly AuctionParticipant[] = [
   { id: 'participant-a', teamId: 'team-a', seatIndex: 0, kind: 'HUMAN_LOCAL' },
@@ -196,6 +197,33 @@ describe('Round 1 auction engine', () => {
     state = passTurn(state, 'team-d')
 
     expect(state.results[0]).toMatchObject({ outcome: 'SOLD', price })
+  })
+
+  it('exposes all five live team-strength values through public auction state', () => {
+    const initial = createAuction()
+    const player = initial.currentCard!.player
+    let state = placeBid(initial, 'team-a', player.basePrice)
+    state = passTurn(state, 'team-b')
+    state = passTurn(state, 'team-c')
+    state = passTurn(state, 'team-d')
+
+    const team = getPublicAuctionState(state).teams.find(
+      ({ teamId }) => teamId === 'team-a',
+    )!
+    expect(team.strength).toEqual(calculateTeamStrength(team.purchasedPlayers))
+    expect(team.strength).toEqual({
+      batting: Math.round(player.batting / 5),
+      bowling: Math.round(player.bowling / 3),
+      wicketKeeping: player.wicketKeeping,
+      leadership: player.leadership,
+      overall: Math.round(
+        (player.batting / 5 +
+          player.bowling / 3 +
+          player.wicketKeeping +
+          player.leadership) /
+          4,
+      ),
+    })
   })
 
   it('stores a Round 1 unsold player for future Round 2 work', () => {

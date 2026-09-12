@@ -16,6 +16,7 @@ import type {
 } from '../domain/types'
 import { validateBid } from './biddingRules'
 import { createRandomSource } from './random'
+import { calculateTeamStrength, type SquadStrength } from './teamStrength'
 
 export type AuctionAction = 'BID' | 'PASS' | 'NOT_INTERESTED'
 export type AuctionStatus = 'IN_PROGRESS' | 'COMPLETE'
@@ -42,6 +43,10 @@ export interface AuctionTeamState {
   readonly balance: Money
   readonly purchasedPlayerCount: number
   readonly purchasedPlayers: readonly PurchasedPlayer[]
+}
+
+export interface PublicAuctionTeamState extends AuctionTeamState {
+  readonly strength: SquadStrength
 }
 
 export interface Round1AuctionConfig {
@@ -106,10 +111,13 @@ export interface AuctionState {
 /** Backwards-compatible name retained for M3-M5 consumers. */
 export type Round1AuctionState = AuctionState
 
-export type PublicRound1AuctionState = Omit<
+type PublicAuctionStateBase = Omit<
   AuctionState,
-  'privateAuctionQueue' | 'seed'
+  'privateAuctionQueue' | 'seed' | 'teams'
 >
+export type PublicRound1AuctionState = PublicAuctionStateBase & {
+  readonly teams: readonly PublicAuctionTeamState[]
+}
 export type PublicAuctionState = PublicRound1AuctionState
 
 export class AuctionRuleError extends Error {
@@ -315,7 +323,10 @@ export function getPublicAuctionState(
     status: state.status,
     participants: state.participants,
     startingPurse: state.startingPurse,
-    teams: state.teams,
+    teams: state.teams.map((team) => ({
+      ...team,
+      strength: calculateTeamStrength(team.purchasedPlayers),
+    })),
     selectedPool: state.selectedPool,
     currentCard: state.currentCard,
     turnTimer: state.turnTimer,

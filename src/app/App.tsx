@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import type { AuctionParticipant, TeamId } from '../domain/types'
-import type { AuctionTeamState, PublicAuctionState } from '../engine/auctionEngine'
+import type { PublicAuctionState, PublicAuctionTeamState } from '../engine/auctionEngine'
 import { TEAM_NAMES, useAuctionHarness, type AuctionHarnessState } from './auctionStore'
 
 type HarnessStore = typeof useAuctionHarness
@@ -83,7 +83,7 @@ function teamStatus(auction: PublicAuctionState, teamId: TeamId): string {
 
 function TeamCard({ auction, team, selected, onSelect }: {
   auction: PublicAuctionState
-  team: AuctionTeamState
+  team: PublicAuctionTeamState
   selected: boolean
   onSelect: () => void
 }) {
@@ -101,6 +101,24 @@ function TeamCard({ auction, team, selected, onSelect }: {
           <span><span className="block text-xs uppercase text-slate-500">Balance</span><strong className="text-lg text-white">{team.balance}</strong></span>
           <span><span className="block text-xs uppercase text-slate-500">Players</span><strong className="text-lg text-white">{team.purchasedPlayerCount}</strong></span>
         </span>
+        <dl
+          aria-label={`${teamName(team.teamId)} strength`}
+          className="mt-3 grid grid-cols-5 gap-1 border-t border-slate-700 pt-3 text-center"
+          role="group"
+        >
+          {([
+            ['BAT', team.strength.batting],
+            ['BOWL', team.strength.bowling],
+            ['WK', team.strength.wicketKeeping],
+            ['LEAD', team.strength.leadership],
+            ['Overall', team.strength.overall],
+          ] as const).map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-[0.6rem] font-bold uppercase tracking-wide text-slate-500">{label}</dt>
+              <dd className={`mt-1 font-black ${label === 'Overall' ? 'text-amber-300' : 'text-white'}`}>{value}</dd>
+            </div>
+          ))}
+        </dl>
         <span className="mt-2 block text-xs text-slate-500">Seat {(participant?.seatIndex ?? 0) + 1} · Select purchases</span>
       </button>
       {isActive && (
