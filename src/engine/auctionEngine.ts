@@ -2,6 +2,7 @@ import {
   AUCTION_POOL_SIZE,
   AUCTION_TURN_SECONDS,
   DEFAULT_STARTING_PURSE,
+  MINIMUM_LEGAL_MONEY_UNIT,
   TARGET_NORMAL_SQUAD_SIZE,
 } from '../domain/constants'
 import type {
@@ -14,9 +15,12 @@ import type {
   TeamId,
 } from '../domain/types'
 import { validateBid } from './biddingRules'
+import { createRandomSource } from './random'
 
 export type AuctionAction = 'BID' | 'PASS' | 'NOT_INTERESTED'
 export type AuctionStatus = 'IN_PROGRESS' | 'COMPLETE'
+export type AuctionPhase = 'ROUND_1' | 'ROUND_2' | 'COMPLETE'
+export type AuctionRound = 1 | 2
 
 /**
  * Deterministic countdown data for the current turn. An application may drive
@@ -30,7 +34,7 @@ export interface AuctionTurnTimerState {
 export interface PurchasedPlayer {
   readonly player: Player
   readonly pricePaid: Money
-  readonly round: 1
+  readonly round: AuctionRound
 }
 
 export interface AuctionTeamState {
@@ -42,10 +46,14 @@ export interface AuctionTeamState {
 
 export interface Round1AuctionConfig {
   readonly startingPurse: Money
+  /** Used when a caller supplies a pool without the originating M2 seed. */
+  readonly seed?: number
 }
 
 export interface AuctionCardState {
   readonly player: Player
+  /** Round 2 deliberately has no base-price floor. */
+  readonly basePrice: Money | null
   readonly cardNumber: number
   readonly startedByTeamId: TeamId
   readonly activeTeamId: TeamId
@@ -75,9 +83,11 @@ export type AuctionCardResult =
  * Authoritative engine state. `privateAuctionQueue` is intentionally excluded
  * from `getPublicAuctionState`; application/UI code should consume that view.
  */
-export interface Round1AuctionState {
-  readonly round: 1
+export interface AuctionState {
+  readonly phase: AuctionPhase
+  readonly round: AuctionRound
   readonly status: AuctionStatus
+  readonly seed: number
   readonly participants: readonly AuctionParticipant[]
   readonly startingPurse: Money
   readonly teams: readonly AuctionTeamState[]
@@ -87,14 +97,20 @@ export interface Round1AuctionState {
   readonly playerIndex: number
   readonly totalPlayers: number
   readonly unsoldPlayers: readonly Player[]
+  /** Players rejected for a second time and permanently removed in Round 2. */
+  readonly rejectedPlayers: readonly Player[]
   readonly results: readonly AuctionCardResult[]
   readonly privateAuctionQueue: readonly Player[]
 }
 
+/** Backwards-compatible name retained for M3-M5 consumers. */
+export type Round1AuctionState = AuctionState
+
 export type PublicRound1AuctionState = Omit<
-  Round1AuctionState,
-  'privateAuctionQueue'
+  AuctionState,
+  'privateAuctionQueue' | 'seed'
 >
+export type PublicAuctionState = PublicRound1AuctionState
 
 export class AuctionRuleError extends Error {
   readonly code: string
@@ -164,8 +180,8 @@ function participantsBySeat(
 
 function makeCard(
   state: Pick<
-    Round1AuctionState,
-    'participants' | 'privateAuctionQueue' | 'playerIndex'
+    AuctionState,
+    'participants' | 'privateAuctionQueue' | 'playerIndex' | 'round'
   >,
 ): AuctionCardState {
   const cardNumber = state.playerIndex + 1
@@ -181,6 +197,7 @@ function makeCard(
 
   return {
     player,
+    basePrice: state.round === 1 ? player.basePrice : null,
     cardNumber,
     startedByTeamId: starter.teamId,
     activeTeamId: starter.teamId,
@@ -197,7 +214,7 @@ function makeTurnTimer(teamId: TeamId): AuctionTurnTimerState {
 }
 
 function getTeamState(
-  state: Pick<Round1AuctionState, 'teams'>,
+  state: Pick<AuctionState, 'teams'>,
   teamId: TeamId,
 ): AuctionTeamState {
   const team = state.teams.find((candidate) => candidate.teamId === teamId)
@@ -208,11 +225,14 @@ function getTeamState(
 }
 
 function minimumLegalBid(card: AuctionCardState): Money {
-  return card.highestBid === null ? card.player.basePrice : card.highestBid + 1
+  if (card.highestBid !== null) {
+    return card.highestBid + MINIMUM_LEGAL_MONEY_UNIT
+  }
+  return card.basePrice ?? MINIMUM_LEGAL_MONEY_UNIT
 }
 
 function canTeamAffordLegalBid(
-  state: Pick<Round1AuctionState, 'teams'>,
+  state: Pick<AuctionState, 'teams'>,
   card: AuctionCardState,
   teamId: TeamId,
 ): boolean {
@@ -228,7 +248,7 @@ function canTeamAffordLegalBid(
 
 /** Whether the team can afford the smallest legal bid for the current card. */
 export function canTeamMakeLegalBid(
-  state: Round1AuctionState,
+  state: AuctionState,
   teamId: TeamId,
 ): boolean {
   if (state.status !== 'IN_PROGRESS' || state.currentCard === null) {
@@ -247,16 +267,23 @@ export function startRound1Auction(
   pool: PlayerPool,
   participants: readonly AuctionParticipant[],
   config: Round1AuctionConfig = { startingPurse: DEFAULT_STARTING_PURSE },
-): Round1AuctionState {
+): AuctionState {
   assertValidPool(pool)
   assertValidParticipants(participants)
   assertValidStartingPurse(config.startingPurse)
 
   const orderedParticipants = participantsBySeat(participants)
 
-  const initial: Round1AuctionState = {
+  const seed = pool.seed ?? config.seed ?? 0
+  if (!Number.isInteger(seed)) {
+    throw new Error('Random seed must be an integer')
+  }
+
+  const initial: AuctionState = {
+    phase: 'ROUND_1',
     round: 1,
     status: 'IN_PROGRESS',
+    seed,
     participants: orderedParticipants,
     startingPurse: config.startingPurse,
     teams: orderedParticipants.map(({ teamId }) => ({
@@ -271,6 +298,7 @@ export function startRound1Auction(
     playerIndex: 0,
     totalPlayers: pool.auctionQueue.length,
     unsoldPlayers: [],
+    rejectedPlayers: [],
     results: [],
     privateAuctionQueue: [...pool.auctionQueue],
   }
@@ -279,9 +307,10 @@ export function startRound1Auction(
 }
 
 export function getPublicAuctionState(
-  state: Round1AuctionState,
+  state: AuctionState,
 ): PublicRound1AuctionState {
   return {
+    phase: state.phase,
     round: state.round,
     status: state.status,
     participants: state.participants,
@@ -293,12 +322,13 @@ export function getPublicAuctionState(
     playerIndex: state.playerIndex,
     totalPlayers: state.totalPlayers,
     unsoldPlayers: state.unsoldPlayers,
+    rejectedPlayers: state.rejectedPlayers,
     results: state.results,
   }
 }
 
 function currentSeatIndex(
-  state: Round1AuctionState,
+  state: AuctionState,
   teamId: TeamId,
 ): SeatIndex {
   const participant = state.participants.find(
@@ -311,7 +341,7 @@ function currentSeatIndex(
 }
 
 function findNextActiveTeam(
-  state: Round1AuctionState,
+  state: AuctionState,
   card: AuctionCardState,
   afterTeamId: TeamId,
 ): TeamId | null {
@@ -338,7 +368,7 @@ function findNextActiveTeam(
 }
 
 function findFirstActiveTeam(
-  state: Round1AuctionState,
+  state: AuctionState,
   card: AuctionCardState,
 ): TeamId | null {
   const starterSeat = currentSeatIndex(state, card.startedByTeamId)
@@ -360,7 +390,7 @@ function findFirstActiveTeam(
 }
 
 function applySoldPlayer(
-  state: Round1AuctionState,
+  state: AuctionState,
   result: Extract<AuctionCardResult, { outcome: 'SOLD' }>,
 ): readonly AuctionTeamState[] {
   return state.teams.map((team) => {
@@ -379,13 +409,52 @@ function applySoldPlayer(
       purchasedPlayerCount: team.purchasedPlayerCount + 1,
       purchasedPlayers: [
         ...team.purchasedPlayers,
-        { player: result.player, pricePaid: result.price, round: 1 },
+        { player: result.player, pricePaid: result.price, round: state.round },
       ],
     }
   })
 }
 
-function startNextAvailableCard(state: Round1AuctionState): Round1AuctionState {
+/** Domain-separated seed keeps the Round 2 stream deterministic and independent. */
+const ROUND_2_SEED_DOMAIN = 0x52a2d201
+
+export function reshuffleRound2Pool(
+  unsoldPlayers: readonly Player[],
+  seed: number,
+): Player[] {
+  if (!Number.isInteger(seed)) {
+    throw new Error('Random seed must be an integer')
+  }
+  return createRandomSource((seed ^ ROUND_2_SEED_DOMAIN) | 0).shuffle(
+    unsoldPlayers,
+  )
+}
+
+function completeOrStartRound2(state: AuctionState): AuctionState {
+  if (state.round === 1 && state.unsoldPlayers.length > 0) {
+    const round2Queue = reshuffleRound2Pool(state.unsoldPlayers, state.seed)
+    return startNextAvailableCard({
+      ...state,
+      phase: 'ROUND_2',
+      round: 2,
+      playerIndex: 0,
+      totalPlayers: round2Queue.length,
+      privateAuctionQueue: round2Queue,
+      currentCard: null,
+      turnTimer: null,
+    })
+  }
+
+  return {
+    ...state,
+    phase: 'COMPLETE',
+    status: 'COMPLETE',
+    currentCard: null,
+    turnTimer: null,
+  }
+}
+
+function startNextAvailableCard(state: AuctionState): AuctionState {
   let next = state
 
   while (next.playerIndex < next.totalPlayers) {
@@ -402,7 +471,14 @@ function startNextAvailableCard(state: Round1AuctionState): Round1AuctionState {
     next = {
       ...next,
       playerIndex: next.playerIndex + 1,
-      unsoldPlayers: [...next.unsoldPlayers, card.player],
+      unsoldPlayers:
+        next.round === 1
+          ? [...next.unsoldPlayers, card.player]
+          : next.unsoldPlayers,
+      rejectedPlayers:
+        next.round === 2
+          ? [...next.rejectedPlayers, card.player]
+          : next.rejectedPlayers,
       results: [
         ...next.results,
         {
@@ -414,18 +490,13 @@ function startNextAvailableCard(state: Round1AuctionState): Round1AuctionState {
     }
   }
 
-  return {
-    ...next,
-    status: 'COMPLETE',
-    currentCard: null,
-    turnTimer: null,
-  }
+  return completeOrStartRound2(next)
 }
 
 function resolveAndAdvance(
-  state: Round1AuctionState,
+  state: AuctionState,
   card: AuctionCardState,
-): Round1AuctionState {
+): AuctionState {
   const result: AuctionCardResult =
     card.highestBidderId !== null && card.highestBid !== null
       ? {
@@ -441,31 +512,35 @@ function resolveAndAdvance(
           cardNumber: card.cardNumber,
         }
   const nextPlayerIndex = state.playerIndex + 1
-  const baseState: Round1AuctionState = {
+  const baseState: AuctionState = {
     ...state,
     playerIndex: nextPlayerIndex,
     teams: result.outcome === 'SOLD' ? applySoldPlayer(state, result) : state.teams,
     unsoldPlayers:
-      result.outcome === 'UNSOLD'
+      result.outcome === 'UNSOLD' && state.round === 1
         ? [...state.unsoldPlayers, card.player]
         : state.unsoldPlayers,
+    rejectedPlayers:
+      result.outcome === 'UNSOLD' && state.round === 2
+        ? [...state.rejectedPlayers, card.player]
+        : state.rejectedPlayers,
     results: [...state.results, result],
     currentCard: null,
     turnTimer: null,
   }
 
   if (nextPlayerIndex === state.totalPlayers) {
-    return { ...baseState, status: 'COMPLETE' }
+    return completeOrStartRound2(baseState)
   }
 
   return startNextAvailableCard(baseState)
 }
 
 function advanceOrResolve(
-  state: Round1AuctionState,
+  state: AuctionState,
   card: AuctionCardState,
   afterTeamId: TeamId,
-): Round1AuctionState {
+): AuctionState {
   const nextTeamId = findNextActiveTeam(state, card, afterTeamId)
   if (nextTeamId === null) {
     return resolveAndAdvance(state, card)
@@ -479,7 +554,7 @@ function advanceOrResolve(
 }
 
 function requireActiveCard(
-  state: Round1AuctionState,
+  state: AuctionState,
   teamId: TeamId,
 ): AuctionCardState {
   if (state.status !== 'IN_PROGRESS' || state.currentCard === null) {
@@ -492,10 +567,10 @@ function requireActiveCard(
 }
 
 export function placeBid(
-  state: Round1AuctionState,
+  state: AuctionState,
   teamId: TeamId,
   amount: Money,
-): Round1AuctionState {
+): AuctionState {
   const validation = validateBid(state, teamId, amount)
   if (!validation.ok) {
     throw new AuctionRuleError(validation.reason)
@@ -514,9 +589,9 @@ export function placeBid(
 }
 
 export function passTurn(
-  state: Round1AuctionState,
+  state: AuctionState,
   teamId: TeamId,
-): Round1AuctionState {
+): AuctionState {
   const card = requireActiveCard(state, teamId)
   const updatedCard: AuctionCardState = {
     ...card,
@@ -528,9 +603,9 @@ export function passTurn(
 }
 
 export function markNotInterested(
-  state: Round1AuctionState,
+  state: AuctionState,
   teamId: TeamId,
-): Round1AuctionState {
+): AuctionState {
   const card = requireActiveCard(state, teamId)
   const updatedCard: AuctionCardState = {
     ...card,
@@ -550,9 +625,9 @@ export function markNotInterested(
  * beyond that boundary is intentionally not applied to the next participant.
  */
 export function advanceTurnTimer(
-  state: Round1AuctionState,
+  state: AuctionState,
   elapsedSeconds = 1,
-): Round1AuctionState {
+): AuctionState {
   if (!Number.isInteger(elapsedSeconds) || elapsedSeconds < 0) {
     throw new AuctionRuleError('INVALID_TIMER_ELAPSE')
   }

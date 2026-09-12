@@ -221,9 +221,10 @@ describe('Round 1 auction engine', () => {
 
   it('progresses through all 25 private cards without exposing queue order publicly', () => {
     let state = createAuction(314159)
+    const round1Queue = state.privateAuctionQueue
     const revealedIds: string[] = []
 
-    while (state.status === 'IN_PROGRESS') {
+    while (state.round === 1) {
       revealedIds.push(state.currentCard!.player.id)
       const publicState = getPublicAuctionState(state)
       expect(publicState).not.toHaveProperty('privateAuctionQueue')
@@ -231,10 +232,9 @@ describe('Round 1 auction engine', () => {
       state = passUntilCardResolves(state)
     }
 
-    expect(revealedIds).toEqual(state.privateAuctionQueue.map(({ id }) => id))
-    expect(state.playerIndex).toBe(25)
-    expect(state.currentCard).toBeNull()
-    expect(state.status).toBe('COMPLETE')
+    expect(revealedIds).toEqual(round1Queue.map(({ id }) => id))
+    expect(state.round).toBe(2)
+    expect(state.phase).toBe('ROUND_2')
   })
 
   it('does not mutate any previous state when applying an action', () => {

@@ -24,6 +24,8 @@ export interface Player {
 }
 
 export interface PlayerPool {
+  /** Seed used to reproduce private auction ordering in later rounds. */
+  readonly seed?: number
   /** Public, order-neutral view of the players selected for this game. */
   readonly selectedPool: readonly Player[]
   /** Private Round 1 appearance order. Do not expose through UI selectors. */

@@ -1,6 +1,9 @@
-import type { AuctionCardState, Round1AuctionState } from './auctionEngine'
+import type { AuctionCardState, AuctionState } from './auctionEngine'
 import type { Money, TeamId } from '../domain/types'
-import { TARGET_NORMAL_SQUAD_SIZE } from '../domain/constants'
+import {
+  MINIMUM_LEGAL_MONEY_UNIT,
+  TARGET_NORMAL_SQUAD_SIZE,
+} from '../domain/constants'
 
 export type BidValidationResult =
   | { readonly ok: true }
@@ -13,6 +16,7 @@ export type BidValidationResult =
         | 'HIGHEST_BIDDER_CANNOT_RAISE_SELF'
         | 'BID_MUST_BE_INTEGER'
         | 'BID_BELOW_BASE_PRICE'
+        | 'BID_BELOW_MINIMUM_MONEY_UNIT'
         | 'BID_MUST_EXCEED_CURRENT'
         | 'BID_EXCEEDS_BALANCE'
         | 'BID_MUST_LEAVE_NON_ZERO_BALANCE'
@@ -39,8 +43,20 @@ function validateCardBid(
     return { ok: false, reason: 'BID_MUST_BE_INTEGER' }
   }
 
-  if (card.highestBid === null && amount < card.player.basePrice) {
+  if (
+    card.highestBid === null &&
+    card.basePrice !== null &&
+    amount < card.basePrice
+  ) {
     return { ok: false, reason: 'BID_BELOW_BASE_PRICE' }
+  }
+
+  if (
+    card.highestBid === null &&
+    card.basePrice === null &&
+    amount < MINIMUM_LEGAL_MONEY_UNIT
+  ) {
+    return { ok: false, reason: 'BID_BELOW_MINIMUM_MONEY_UNIT' }
   }
 
   if (card.highestBid !== null && amount <= card.highestBid) {
@@ -51,7 +67,7 @@ function validateCardBid(
 }
 
 export function validateBid(
-  state: Round1AuctionState,
+  state: AuctionState,
   teamId: TeamId,
   amount: Money,
 ): BidValidationResult {

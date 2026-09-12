@@ -39,5 +39,5 @@ export function createM2PlayerPool(
   )
   const auctionQueue = random.shuffle(selectedDraw)
 
-  return { selectedPool, auctionQueue }
+  return { seed, selectedPool, auctionQueue }
 }
