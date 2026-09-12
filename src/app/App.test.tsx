@@ -42,7 +42,12 @@ describe('M6.5 auction harness', () => {
     expect(auction.phase).toBe('ROUND_1')
     expect(screen.getByRole('heading', { name: auction.currentCard!.player.name })).toBeInTheDocument()
     expect(within(screen.getByLabelText('Auction controls')).getByText('Team A')).toBeInTheDocument()
-    expect(within(screen.getByLabelText('Four teams')).getAllByRole('article')).toHaveLength(4)
+    const teams = within(screen.getByLabelText('Four teams')).getAllByRole('article')
+    expect(teams).toHaveLength(4)
+    expect(within(teams[0]).getByLabelText('Seconds remaining')).toHaveTextContent('10s')
+    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveLength(4)
+    expect(screen.getByRole('heading', { name: 'Auction History' })).toBeInTheDocument()
+    expect(screen.queryByText(/Up Next/i)).not.toBeInTheDocument()
   })
 
   it('dispatches BID, PASS, and NOT INTERESTED through the engine', () => {
@@ -83,6 +88,11 @@ describe('M6.5 auction harness', () => {
 
     expect(screen.getByText(new RegExp(`SOLD: ${player.name} to Team A for ${price}`))).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Team A purchased players' })).getByText(new RegExp(player.name))).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Auction history' })).getByText(player.name)).toBeInTheDocument()
+
+    fireEvent.click(within(screen.getByLabelText('Four teams')).getByRole('button', { name: /Team B/ }))
+    expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('team-b')
+    expect(screen.getByText('No players purchased yet.')).toBeInTheDocument()
   })
 
   it('shows Round 2 and its no-base-price current player', () => {

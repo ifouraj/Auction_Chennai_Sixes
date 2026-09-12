@@ -1,12 +1,8 @@
 import { useEffect, useState } from 'react'
 
 import type { AuctionParticipant, TeamId } from '../domain/types'
-import type { PublicAuctionState } from '../engine/auctionEngine'
-import {
-  TEAM_NAMES,
-  useAuctionHarness,
-  type AuctionHarnessState,
-} from './auctionStore'
+import type { AuctionTeamState, PublicAuctionState } from '../engine/auctionEngine'
+import { TEAM_NAMES, useAuctionHarness, type AuctionHarnessState } from './auctionStore'
 
 type HarnessStore = typeof useAuctionHarness
 
@@ -14,14 +10,21 @@ function teamName(teamId: TeamId | null): string {
   return teamId === null ? 'None' : (TEAM_NAMES[teamId] ?? teamId)
 }
 
-function Header({ createGame }: { createGame: () => void }) {
+function Header({ state }: { state: AuctionHarnessState }) {
+  const auction = state.auction
   return (
-    <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-5">
+    <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-4">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">M6.5 development harness</p>
-        <h1 className="text-3xl font-bold text-white">Chennai Sixes Auction</h1>
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">M6.5 playable harness</p>
+        <h1 className="text-2xl font-black uppercase tracking-wide text-white">Chennai Sixes Auction</h1>
       </div>
-      <button className="rounded bg-slate-700 px-4 py-2 font-semibold hover:bg-slate-600" onClick={() => createGame()}>
+      {auction && (
+        <div className="flex items-center gap-8 text-sm font-bold uppercase tracking-wider text-slate-300" aria-label="Auction progress">
+          <span>{auction.phase === 'COMPLETE' ? 'Auction Complete' : `Round ${auction.round}`}</span>
+          <span>{auction.status === 'COMPLETE' ? `${auction.results.length} players processed` : `Player ${auction.playerIndex + 1} / ${auction.totalPlayers}`}</span>
+        </div>
+      )}
+      <button className="rounded border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-700" onClick={() => state.createGame()}>
         New Game
       </button>
     </header>
@@ -50,9 +53,7 @@ function PreAuction({ pool, startAuction }: { pool: AuctionHarnessState['selecte
           <h2 className="text-2xl font-bold">Selected player pool</h2>
           <p className="text-slate-400">All {pool.length} public selections are visible before the private order begins.</p>
         </div>
-        <button className="rounded bg-emerald-500 px-5 py-3 font-bold text-slate-950 hover:bg-emerald-400" onClick={startAuction}>
-          Start Round 1
-        </button>
+        <button className="rounded bg-emerald-500 px-5 py-3 font-bold text-slate-950 hover:bg-emerald-400" onClick={startAuction}>Start Round 1</button>
       </div>
       <ol aria-label="Selected 25 players" className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
         {pool.map((player) => (
@@ -70,43 +71,45 @@ function participantForTeam(participants: readonly AuctionParticipant[], teamId:
   return participants.find((participant) => participant.teamId === teamId)
 }
 
-function Teams({ auction }: { auction: PublicAuctionState }) {
+function teamStatus(auction: PublicAuctionState, teamId: TeamId): string {
   const card = auction.currentCard
+  if (card === null) return 'WAITING'
+  if (card.activeTeamId === teamId) return 'TURN'
+  if (card.highestBidderId === teamId) return 'LEADING'
+  if (card.notInterestedTeamIds.includes(teamId)) return 'NOT INTERESTED'
+  if (card.passedThisCycleTeamIds.includes(teamId)) return 'PASSED'
+  return 'WAITING'
+}
+
+function TeamCard({ auction, team, selected, onSelect }: {
+  auction: PublicAuctionState
+  team: AuctionTeamState
+  selected: boolean
+  onSelect: () => void
+}) {
+  const participant = participantForTeam(auction.participants, team.teamId)
+  const isActive = auction.currentCard?.activeTeamId === team.teamId
+  const status = teamStatus(auction, team.teamId)
   return (
-    <section aria-labelledby="teams-title">
-      <h2 className="mb-3 text-lg font-bold" id="teams-title">Four teams</h2>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {auction.teams.map((team) => {
-          const participant = participantForTeam(auction.participants, team.teamId)
-          const isActive = card?.activeTeamId === team.teamId
-          const status = isActive
-            ? 'ACTIVE TURN'
-            : card?.highestBidderId === team.teamId
-              ? 'HIGHEST BIDDER'
-              : card?.notInterestedTeamIds.includes(team.teamId)
-                ? 'NOT INTERESTED'
-                : card?.passedThisCycleTeamIds.includes(team.teamId)
-                  ? 'PASSED THIS CYCLE'
-                  : 'WAITING'
-          return (
-            <article className={`rounded border p-4 ${isActive ? 'border-cyan-400 bg-cyan-950/50' : 'border-slate-700 bg-slate-900'}`} key={team.teamId}>
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="font-bold text-white">{teamName(team.teamId)}</h3>
-                <span className="text-xs font-bold text-cyan-300">Seat {(participant?.seatIndex ?? 0) + 1}</span>
-              </div>
-              <p className="mt-2 text-2xl font-bold">{team.balance}</p>
-              <p className="text-sm text-slate-400">Balance · {team.purchasedPlayerCount} purchased</p>
-              <p className="mt-2 text-xs font-bold tracking-wide text-amber-300">{status}</p>
-              {team.purchasedPlayers.length > 0 && (
-                <ul aria-label={`${teamName(team.teamId)} purchased players`} className="mt-3 border-t border-slate-700 pt-2 text-sm text-slate-300">
-                  {team.purchasedPlayers.map(({ player, pricePaid }) => <li key={player.id}>{player.name} · {pricePaid}</li>)}
-                </ul>
-              )}
-            </article>
-          )
-        })}
-      </div>
-    </section>
+    <article className={`rounded-lg border p-4 transition ${isActive ? 'border-cyan-300 bg-cyan-950/70 shadow-[0_0_0_1px_rgba(103,232,249,0.25)]' : selected ? 'border-slate-400 bg-slate-800' : 'border-slate-700 bg-slate-900'} ${status === 'NOT INTERESTED' ? 'opacity-55' : ''}`}>
+      <button className="w-full text-left" onClick={onSelect} type="button">
+        <span className="flex items-center justify-between gap-2">
+          <span className="font-black uppercase tracking-wide text-white">{teamName(team.teamId)}</span>
+          <span className={`rounded px-2 py-1 text-[0.65rem] font-black tracking-wider ${isActive ? 'bg-cyan-300 text-slate-950' : status === 'LEADING' ? 'bg-emerald-400/20 text-emerald-300' : 'bg-slate-800 text-slate-300'}`}>{status}</span>
+        </span>
+        <span className="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <span><span className="block text-xs uppercase text-slate-500">Balance</span><strong className="text-lg text-white">{team.balance}</strong></span>
+          <span><span className="block text-xs uppercase text-slate-500">Players</span><strong className="text-lg text-white">{team.purchasedPlayerCount}</strong></span>
+        </span>
+        <span className="mt-2 block text-xs text-slate-500">Seat {(participant?.seatIndex ?? 0) + 1} · Select purchases</span>
+      </button>
+      {isActive && (
+        <div className="mt-3 flex items-end justify-between border-t border-cyan-800 pt-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">Active turn</span>
+          <span aria-label="Seconds remaining" className="text-3xl font-black leading-none text-white">{auction.turnTimer?.remainingSeconds ?? 0}s</span>
+        </div>
+      )}
+    </article>
   )
 }
 
@@ -114,24 +117,69 @@ function PlayerCard({ auction }: { auction: PublicAuctionState }) {
   const card = auction.currentCard
   if (card === null) return null
   const { player } = card
-  const stats = [
-    ['Batting', player.batting], ['Bowling', player.bowling],
-    ['Wicket keeping', player.wicketKeeping], ['Leadership', player.leadership],
-    ['Overall', player.overall],
-  ]
+  const stats = [['BAT', player.batting], ['BOWL', player.bowling], ['WK', player.wicketKeeping], ['LEAD', player.leadership], ['Overall', player.overall]]
   return (
-    <article className="rounded border border-slate-700 bg-slate-900 p-5">
-      <p className="text-sm font-bold uppercase tracking-wider text-cyan-400">Current player</p>
-      <h2 className="mt-1 text-3xl font-bold text-white">{player.name}</h2>
-      <p className="text-slate-400">{player.country} · Age {player.age}</p>
-      <p className="mt-4 text-slate-300">{player.description}</p>
-      <dl className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {stats.map(([label, value]) => <div className="rounded bg-slate-800 p-2" key={label}><dt className="text-xs text-slate-400">{label}</dt><dd className="font-bold">{value}</dd></div>)}
+    <div className="rounded-xl border border-amber-400/70 bg-slate-900 px-5 py-6 text-center shadow-xl shadow-black/20">
+      <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-300">Current Player</p>
+      <h2 className="mt-2 text-3xl font-black text-white">{player.name}</h2>
+      <p className="mt-1 text-sm font-semibold text-slate-400">{player.country} · Age {player.age}</p>
+      <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-slate-300">{player.description}</p>
+      <dl className="mx-auto mt-5 grid max-w-xl grid-cols-5 gap-2">
+        {stats.map(([label, value]) => (
+          <div className={`rounded border px-2 py-3 ${label === 'Overall' ? 'border-amber-500/50 bg-amber-950/40' : 'border-slate-700 bg-slate-800'}`} key={label}>
+            <dt className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-400">{label}</dt>
+            <dd className="mt-1 text-xl font-black text-white">{value}</dd>
+          </div>
+        ))}
       </dl>
-      <p className="mt-5 text-lg font-bold text-amber-300">
-        {card.basePrice === null ? 'No base price (Round 2)' : `Base price: ${card.basePrice}`}
-      </p>
-    </article>
+      {card.basePrice === null
+        ? <p className="mt-5 text-sm font-bold uppercase tracking-wider text-violet-300">No base price (Round 2)</p>
+        : <p className="mt-5 text-sm font-bold uppercase tracking-wider text-amber-300">Base price <span className="ml-2 text-xl text-white">{card.basePrice}</span></p>}
+    </div>
+  )
+}
+
+function BoughtPlayers({ auction, selectedTeamId, onSelectTeam }: {
+  auction: PublicAuctionState
+  selectedTeamId: TeamId
+  onSelectTeam: (teamId: TeamId) => void
+}) {
+  const selectedTeam = auction.teams.find((team) => team.teamId === selectedTeamId) ?? auction.teams[0]
+  return (
+    <aside className="rounded-lg border border-slate-700 bg-slate-900 p-4" aria-labelledby="bought-players-title">
+      <h2 className="text-sm font-black uppercase tracking-[0.16em] text-white" id="bought-players-title">Bought Players</h2>
+      <label className="mt-4 block text-xs font-bold uppercase tracking-wider text-slate-500" htmlFor="bought-team">Team</label>
+      <select className="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2 font-semibold text-white" id="bought-team" onChange={(event) => onSelectTeam(event.target.value)} value={selectedTeam.teamId}>
+        {auction.teams.map((team) => <option key={team.teamId} value={team.teamId}>{teamName(team.teamId)}</option>)}
+      </select>
+      {selectedTeam.purchasedPlayers.length === 0 ? <p className="mt-5 text-sm text-slate-500">No players purchased yet.</p> : (
+        <ul aria-label={`${teamName(selectedTeam.teamId)} purchased players`} className="mt-4 divide-y divide-slate-800">
+          {selectedTeam.purchasedPlayers.map(({ player, pricePaid }) => (
+            <li className="flex items-start justify-between gap-3 py-3 text-sm" key={player.id}>
+              <span className="font-semibold text-slate-200">{player.name}</span><span className="shrink-0 font-black text-amber-300">{pricePaid}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
+  )
+}
+
+function AuctionHistory({ auction }: { auction: PublicAuctionState }) {
+  return (
+    <aside className="rounded-lg border border-slate-700 bg-slate-900 p-4" aria-labelledby="auction-history-title">
+      <h2 className="text-sm font-black uppercase tracking-[0.16em] text-white" id="auction-history-title">Auction History</h2>
+      {auction.results.length === 0 ? <p className="mt-5 text-sm text-slate-500">Results will appear here chronologically.</p> : (
+        <ol aria-label="Auction history" className="mt-4 divide-y divide-slate-800">
+          {auction.results.map((result, index) => (
+            <li className="py-3 text-sm" key={`${result.cardNumber}-${result.player.id}-${index}`}>
+              <span className="block font-bold text-white">{result.player.name}</span>
+              {result.outcome === 'SOLD' ? <span className="mt-1 block text-slate-400">{teamName(result.buyerTeamId)} · <strong className="text-emerald-300">{result.price}</strong></span> : <span className="mt-1 block font-black tracking-wider text-rose-300">UNSOLD</span>}
+            </li>
+          ))}
+        </ol>
+      )}
+    </aside>
   )
 }
 
@@ -145,65 +193,54 @@ function Controls({ auction, feedback, bid, pass, notInterested }: {
   const card = auction.currentCard
   const suggestedBid = card?.highestBid === null ? (card.basePrice ?? 1) : (card?.highestBid ?? 0) + 1
   const [amount, setAmount] = useState(String(suggestedBid))
-
   if (card === null) return null
-
   return (
-    <section className="rounded border border-cyan-700 bg-slate-900 p-5" aria-label="Auction controls">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <section className="border-t border-cyan-800 bg-slate-900 px-4 py-4" aria-label="Auction controls">
+      <div className="mx-auto flex max-w-[1500px] flex-wrap items-end gap-4">
+        <div className="mr-auto min-w-40">
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Current Bid</p>
+          <p className="text-3xl font-black text-white">{card.highestBid ?? '—'}</p>
+          <p className="text-xs text-slate-400">{card.highestBidderId === null ? 'No bidder' : `${teamName(card.highestBidderId)} leading`}</p>
+        </div>
         <div>
-          <p className="text-sm text-slate-400">Current Turn</p>
-          <h2 className="text-3xl font-bold text-cyan-300">{teamName(card.activeTeamId)}</h2>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500" htmlFor="bid-amount">Bid amount · <span>{teamName(card.activeTeamId)}</span></label>
+          <input aria-label="Bid amount" className="mt-1 w-36 rounded border border-slate-600 bg-slate-950 px-3 py-2 text-lg font-bold text-white" id="bid-amount" inputMode="numeric" onChange={(event) => setAmount(event.target.value)} step="1" type="number" value={amount} />
         </div>
-        <div className="text-right">
-          <p className="text-sm text-slate-400">Turn timer</p>
-          <p aria-label="Seconds remaining" className="text-4xl font-black text-white">{auction.turnTimer?.remainingSeconds ?? 0}s</p>
-        </div>
+        <button className="rounded bg-emerald-500 px-6 py-3 font-black text-slate-950 hover:bg-emerald-400" onClick={() => bid(Number(amount))}>BID</button>
+        <button className="rounded bg-amber-500 px-6 py-3 font-black text-slate-950 hover:bg-amber-400" onClick={pass}>PASS</button>
+        <button className="rounded bg-rose-500 px-6 py-3 font-black text-white hover:bg-rose-400" onClick={notInterested}>NOT INTERESTED</button>
       </div>
-      <div className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
-        <input aria-label="Bid amount" className="rounded border border-slate-600 bg-slate-950 px-3 py-2 text-white" inputMode="numeric" onChange={(event) => setAmount(event.target.value)} step="1" type="number" value={amount} />
-        <button className="rounded bg-emerald-500 px-5 py-2 font-bold text-slate-950 hover:bg-emerald-400" onClick={() => bid(Number(amount))}>BID</button>
-        <button className="rounded bg-amber-500 px-5 py-2 font-bold text-slate-950 hover:bg-amber-400" onClick={pass}>PASS</button>
-        <button className="rounded bg-rose-500 px-5 py-2 font-bold text-white hover:bg-rose-400" onClick={notInterested}>NOT INTERESTED</button>
-      </div>
-      {feedback && <p role="alert" className="mt-3 rounded bg-rose-950 p-3 text-rose-200">{feedback}</p>}
+      {feedback && <p role="alert" className="mx-auto mt-3 max-w-[1500px] rounded bg-rose-950 p-3 text-rose-200">{feedback}</p>}
     </section>
   )
 }
 
 function Auction({ state }: { state: AuctionHarnessState }) {
   const { auction, lastResult } = state
+  const [selectedTeamId, setSelectedTeamId] = useState<TeamId>('team-a')
   if (auction === null) return null
-  const lastResultText = lastResult?.outcome === 'SOLD'
-    ? `SOLD: ${lastResult.player.name} to ${teamName(lastResult.buyerTeamId)} for ${lastResult.price}`
-    : lastResult?.outcome === 'UNSOLD'
-      ? `UNSOLD: ${lastResult.player.name}`
-      : null
+  const lastResultText = lastResult?.outcome === 'SOLD' ? `SOLD: ${lastResult.player.name} to ${teamName(lastResult.buyerTeamId)} for ${lastResult.price}` : lastResult?.outcome === 'UNSOLD' ? `UNSOLD: ${lastResult.player.name}` : null
 
+  if (auction.status === 'COMPLETE') {
+    return <section className="mt-6 rounded border border-emerald-500 bg-emerald-950 p-8 text-center"><h2 className="text-4xl font-black text-emerald-200">AUCTION COMPLETE</h2><p className="mt-2 text-emerald-100">Use New Game to create another fresh auction.</p></section>
+  }
+
+  const topTeams = auction.teams.slice(0, 2)
+  const bottomTeams = auction.teams.slice(2, 4)
   return (
-    <div className="mt-6 space-y-5">
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded bg-slate-800 p-4" aria-label="Auction progress">
-        <strong>{auction.phase === 'COMPLETE' ? 'AUCTION COMPLETE' : `Round ${auction.round}`}</strong>
-        <span>{auction.status === 'COMPLETE' ? `${auction.results.length} players processed` : `Player ${auction.playerIndex + 1} of ${auction.totalPlayers}`}</span>
-      </section>
-      {auction.phase === 'ROUND_2' && <p role="status" className="rounded border border-violet-500 bg-violet-950 p-4 font-bold text-violet-200">Round 2 has started — unsold players return with no base price.</p>}
-      {lastResultText && <p role="status" className="rounded border border-amber-500 bg-amber-950 p-4 font-bold text-amber-200">{lastResultText}</p>}
-      {auction.status === 'COMPLETE' ? (
-        <section className="rounded border border-emerald-500 bg-emerald-950 p-8 text-center">
-          <h2 className="text-4xl font-black text-emerald-200">AUCTION COMPLETE</h2>
-          <p className="mt-2 text-emerald-100">Use New Game to create another fresh auction.</p>
-        </section>
-      ) : (
-        <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+    <div className="mt-5">
+      {auction.phase === 'ROUND_2' && <p role="status" className="mb-4 rounded border border-violet-500 bg-violet-950 p-3 text-center font-bold text-violet-200">Round 2 has started — unsold players return with no base price.</p>}
+      {lastResultText && <p role="status" className="mb-4 rounded border border-amber-500 bg-amber-950 p-3 text-center font-bold text-amber-200">{lastResultText}</p>}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(220px,0.75fr)_minmax(520px,2fr)_minmax(220px,0.75fr)]">
+        <BoughtPlayers auction={auction} selectedTeamId={selectedTeamId} onSelectTeam={setSelectedTeamId} />
+        <section aria-label="Four teams" className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">{topTeams.map((team) => <TeamCard auction={auction} key={team.teamId} onSelect={() => setSelectedTeamId(team.teamId)} selected={selectedTeamId === team.teamId} team={team} />)}</div>
           <PlayerCard auction={auction} />
-          <Controls auction={auction} feedback={state.feedback} bid={state.bid} pass={state.pass} notInterested={state.notInterested} key={`${auction.round}-${auction.currentCard?.cardNumber}-${auction.currentCard?.highestBid}`} />
-        </div>
-      )}
-      <Teams auction={auction} />
-      <section className="rounded border border-slate-700 bg-slate-900 p-4" aria-label="Bid state">
-        <h2 className="font-bold">Bid state</h2>
-        <p className="mt-1 text-slate-300">Highest bid: {auction.currentCard?.highestBid ?? 'None'} · Highest bidder: {teamName(auction.currentCard?.highestBidderId ?? null)}</p>
-      </section>
+          <div className="grid gap-4 sm:grid-cols-2">{bottomTeams.map((team) => <TeamCard auction={auction} key={team.teamId} onSelect={() => setSelectedTeamId(team.teamId)} selected={selectedTeamId === team.teamId} team={team} />)}</div>
+        </section>
+        <AuctionHistory auction={auction} />
+      </div>
+      <div className="-mx-6 mt-5"><Controls auction={auction} feedback={state.feedback} bid={state.bid} pass={state.pass} notInterested={state.notInterested} key={`${auction.round}-${auction.currentCard?.cardNumber}-${auction.currentCard?.highestBid}`} /></div>
     </div>
   )
 }
@@ -215,11 +252,10 @@ export function AuctionHarnessApp({ store = useAuctionHarness }: { store?: Harne
     const interval = window.setInterval(() => store.getState().tick(), 1_000)
     return () => window.clearInterval(interval)
   }, [state.stage, state.auction?.status, store])
-
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-6 text-slate-100">
-      <div className="mx-auto max-w-7xl">
-        <Header createGame={state.createGame} />
+      <div className="mx-auto max-w-[1500px]">
+        <Header state={state} />
         {state.stage === 'WELCOME' && <Welcome createGame={state.createGame} />}
         {state.stage === 'PRE_AUCTION' && <PreAuction pool={state.selectedPool} startAuction={state.startAuction} />}
         {state.stage === 'AUCTION' && <Auction state={state} />}
@@ -228,8 +264,6 @@ export function AuctionHarnessApp({ store = useAuctionHarness }: { store?: Harne
   )
 }
 
-function App() {
-  return <AuctionHarnessApp />
-}
+function App() { return <AuctionHarnessApp /> }
 
 export default App
