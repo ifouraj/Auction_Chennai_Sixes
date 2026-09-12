@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+coverage/
+
+# Local environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Tool caches and logs
+*.log
+.eslintcache
+*.tsbuildinfo
+
+# Editor and operating-system files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Vercel local state
+.vercel/
