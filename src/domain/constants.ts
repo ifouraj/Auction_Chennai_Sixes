@@ -1,0 +1,2 @@
+export const NORMAL_PLAYER_CATALOG_SIZE = 50
+export const AUCTION_POOL_SIZE = 25
