@@ -174,7 +174,12 @@ function BoughtPlayers({ auction, selectedTeamId, onSelectTeam }: {
         <ul aria-label={`${teamName(selectedTeam.teamId)} purchased players`} className="mt-4 divide-y divide-slate-800">
           {selectedTeam.purchasedPlayers.map(({ player, pricePaid }) => (
             <li className="flex items-start justify-between gap-3 py-3 text-sm" key={player.id}>
-              <span className="font-semibold text-slate-200">{player.name}</span><span className="shrink-0 font-black text-amber-300">{pricePaid}</span>
+              <span className="font-semibold text-slate-200">
+                {player.name}
+                {selectedTeam.bestSix.playerIds.includes(player.id) && (
+                  <span aria-label={`${player.name} is in automatic Best Six`} className="ml-2 rounded bg-cyan-400/15 px-1.5 py-0.5 text-[0.6rem] font-black tracking-wider text-cyan-300">BEST SIX</span>
+                )}
+              </span><span className="shrink-0 font-black text-amber-300">{pricePaid}</span>
             </li>
           ))}
         </ul>

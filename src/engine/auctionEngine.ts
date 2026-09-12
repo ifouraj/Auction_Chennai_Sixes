@@ -15,8 +15,8 @@ import type {
   TeamId,
 } from '../domain/types'
 import { validateBid } from './biddingRules'
+import { calculateBestSix, type BestSixResult } from './bestSix'
 import { createRandomSource } from './random'
-import { calculateTeamStrength, type SquadStrength } from './teamStrength'
 
 export type AuctionAction = 'BID' | 'PASS' | 'NOT_INTERESTED'
 export type AuctionStatus = 'IN_PROGRESS' | 'COMPLETE'
@@ -46,7 +46,8 @@ export interface AuctionTeamState {
 }
 
 export interface PublicAuctionTeamState extends AuctionTeamState {
-  readonly strength: SquadStrength
+  readonly bestSix: BestSixResult
+  readonly strength: BestSixResult['strength']
 }
 
 export interface Round1AuctionConfig {
@@ -323,10 +324,10 @@ export function getPublicAuctionState(
     status: state.status,
     participants: state.participants,
     startingPurse: state.startingPurse,
-    teams: state.teams.map((team) => ({
-      ...team,
-      strength: calculateTeamStrength(team.purchasedPlayers),
-    })),
+    teams: state.teams.map((team) => {
+      const bestSix = calculateBestSix(team.purchasedPlayers)
+      return { ...team, bestSix, strength: bestSix.strength }
+    }),
     selectedPool: state.selectedPool,
     currentCard: state.currentCard,
     turnTimer: state.turnTimer,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { AuctionParticipant } from '../../domain/types'
+import type { AuctionParticipant, Player } from '../../domain/types'
 import {
   AuctionRuleError,
   getPublicAuctionState,
@@ -13,6 +13,7 @@ import {
 import { validateBid } from '../../engine/biddingRules'
 import { createM2PlayerPool } from '../../engine/playerPool'
 import { calculateTeamStrength } from '../../engine/teamStrength'
+import { calculateBestSix } from '../../engine/bestSix'
 
 const participants: readonly AuctionParticipant[] = [
   { id: 'participant-a', teamId: 'team-a', seatIndex: 0, kind: 'HUMAN_LOCAL' },
@@ -23,6 +24,29 @@ const participants: readonly AuctionParticipant[] = [
 
 function createAuction(seed = 8675309): Round1AuctionState {
   return startRound1Auction(createM2PlayerPool(seed), participants)
+}
+
+function ratedPlayer(
+  id: string,
+  batting: number,
+  bowling: number,
+  wicketKeeping: number,
+  leadership: number,
+): Player {
+  return {
+    id,
+    name: id,
+    country: 'Test',
+    age: 25,
+    description: 'Test player',
+    batting,
+    bowling,
+    wicketKeeping,
+    leadership,
+    overall: 0,
+    basePrice: 1,
+    kind: 'NORMAL',
+  }
 }
 
 function passUntilCardResolves(state: Round1AuctionState): Round1AuctionState {
@@ -210,6 +234,9 @@ describe('Round 1 auction engine', () => {
     const team = getPublicAuctionState(state).teams.find(
       ({ teamId }) => teamId === 'team-a',
     )!
+    expect(team.bestSix).toEqual(calculateBestSix(team.purchasedPlayers))
+    expect(team.bestSix.playerIds).toEqual([player.id])
+    expect(team.bestSix.isComplete).toBe(false)
     expect(team.strength).toEqual(calculateTeamStrength(team.purchasedPlayers))
     expect(team.strength).toEqual({
       batting: Math.round(player.batting / 5),
@@ -224,6 +251,46 @@ describe('Round 1 auction engine', () => {
           4,
       ),
     })
+  })
+
+  it('recomputes public Best Six immediately after a new SOLD player', () => {
+    const initial = createAuction()
+    const existingPlayers = Array.from({ length: 6 }, (_, index) => ({
+      player: ratedPlayer(`existing-${index}`, 40, 40, 40, 40),
+      pricePaid: 1,
+      round: 1 as const,
+    }))
+    const specialist = ratedPlayer('new-specialist', 100, 0, 0, 0)
+    let state: Round1AuctionState = {
+      ...initial,
+      teams: initial.teams.map((team) =>
+        team.teamId === 'team-a'
+          ? {
+              ...team,
+              purchasedPlayerCount: 6,
+              purchasedPlayers: existingPlayers,
+            }
+          : team,
+      ),
+      currentCard: {
+        ...initial.currentCard!,
+        player: specialist,
+        basePrice: specialist.basePrice,
+      },
+    }
+    const before = getPublicAuctionState(state).teams[0].bestSix
+
+    state = placeBid(state, 'team-a', specialist.basePrice)
+    state = passTurn(state, 'team-b')
+    state = passTurn(state, 'team-c')
+    state = passTurn(state, 'team-d')
+    const team = getPublicAuctionState(state).teams[0]
+
+    expect(before.playerIds).not.toContain(specialist.id)
+    expect(team.purchasedPlayers).toHaveLength(7)
+    expect(team.bestSix).toEqual(calculateBestSix(team.purchasedPlayers))
+    expect(team.bestSix.playerIds).toContain(specialist.id)
+    expect(team.bestSix.playerIds).toHaveLength(6)
   })
 
   it('stores a Round 1 unsold player for future Round 2 work', () => {

@@ -100,6 +100,8 @@ describe('M6.5 auction harness', () => {
 
     expect(screen.getByText(new RegExp(`SOLD: ${player.name} to Team A for ${price}`))).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Team A purchased players' })).getByText(new RegExp(player.name))).toBeInTheDocument()
+    expect(screen.getByLabelText(`${player.name} is in automatic Best Six`)).toHaveTextContent('BEST SIX')
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Auction history' })).getByText(player.name)).toBeInTheDocument()
     const expectedStrength = calculateTeamStrength([{ player }])
     const teamAStrength = screen.getByRole('group', { name: 'Team A strength' })
