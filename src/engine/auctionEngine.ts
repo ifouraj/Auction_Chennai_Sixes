@@ -1,4 +1,7 @@
-import { AUCTION_POOL_SIZE } from '../domain/constants'
+import {
+  AUCTION_POOL_SIZE,
+  AUCTION_TURN_SECONDS,
+} from '../domain/constants'
 import type {
   AuctionParticipant,
   Money,
@@ -12,6 +15,15 @@ import { validateBid } from './biddingRules'
 
 export type AuctionAction = 'BID' | 'PASS' | 'NOT_INTERESTED'
 export type AuctionStatus = 'IN_PROGRESS' | 'COMPLETE'
+
+/**
+ * Deterministic countdown data for the current turn. An application may drive
+ * it from an interval, but the domain engine never reads the wall clock.
+ */
+export interface AuctionTurnTimerState {
+  readonly teamId: TeamId
+  readonly remainingSeconds: number
+}
 
 export interface AuctionCardState {
   readonly player: Player
@@ -50,6 +62,7 @@ export interface Round1AuctionState {
   readonly participants: readonly AuctionParticipant[]
   readonly selectedPool: readonly Player[]
   readonly currentCard: AuctionCardState | null
+  readonly turnTimer: AuctionTurnTimerState | null
   readonly playerIndex: number
   readonly totalPlayers: number
   readonly unsoldPlayers: readonly Player[]
@@ -152,6 +165,10 @@ function makeCard(
   }
 }
 
+function makeTurnTimer(teamId: TeamId): AuctionTurnTimerState {
+  return { teamId, remainingSeconds: AUCTION_TURN_SECONDS }
+}
+
 export function startRound1Auction(
   pool: PlayerPool,
   participants: readonly AuctionParticipant[],
@@ -165,6 +182,7 @@ export function startRound1Auction(
     participants: participantsBySeat(participants),
     selectedPool: [...pool.selectedPool],
     currentCard: null,
+    turnTimer: null,
     playerIndex: 0,
     totalPlayers: pool.auctionQueue.length,
     unsoldPlayers: [],
@@ -172,7 +190,12 @@ export function startRound1Auction(
     privateAuctionQueue: [...pool.auctionQueue],
   }
 
-  return { ...initial, currentCard: makeCard(initial) }
+  const currentCard = makeCard(initial)
+  return {
+    ...initial,
+    currentCard,
+    turnTimer: makeTurnTimer(currentCard.activeTeamId),
+  }
 }
 
 export function getPublicAuctionState(
@@ -184,6 +207,7 @@ export function getPublicAuctionState(
     participants: state.participants,
     selectedPool: state.selectedPool,
     currentCard: state.currentCard,
+    turnTimer: state.turnTimer,
     playerIndex: state.playerIndex,
     totalPlayers: state.totalPlayers,
     unsoldPlayers: state.unsoldPlayers,
@@ -258,13 +282,19 @@ function resolveAndAdvance(
         : state.unsoldPlayers,
     results: [...state.results, result],
     currentCard: null,
+    turnTimer: null,
   }
 
   if (nextPlayerIndex === state.totalPlayers) {
     return { ...baseState, status: 'COMPLETE' }
   }
 
-  return { ...baseState, currentCard: makeCard(baseState) }
+  const currentCard = makeCard(baseState)
+  return {
+    ...baseState,
+    currentCard,
+    turnTimer: makeTurnTimer(currentCard.activeTeamId),
+  }
 }
 
 function advanceOrResolve(
@@ -280,6 +310,7 @@ function advanceOrResolve(
   return {
     ...state,
     currentCard: { ...card, activeTeamId: nextTeamId },
+    turnTimer: makeTurnTimer(nextTeamId),
   }
 }
 
@@ -347,6 +378,42 @@ export function markNotInterested(
   }
 
   return advanceOrResolve(state, updatedCard, teamId)
+}
+
+/**
+ * Advances only the active turn's logical countdown. Reaching zero performs
+ * exactly one PASS through the normal auction state machine. Any elapsed time
+ * beyond that boundary is intentionally not applied to the next participant.
+ */
+export function advanceTurnTimer(
+  state: Round1AuctionState,
+  elapsedSeconds = 1,
+): Round1AuctionState {
+  if (!Number.isInteger(elapsedSeconds) || elapsedSeconds < 0) {
+    throw new AuctionRuleError('INVALID_TIMER_ELAPSE')
+  }
+  if (state.status !== 'IN_PROGRESS' || state.currentCard === null) {
+    throw new AuctionRuleError('AUCTION_NOT_ACTIVE')
+  }
+  if (
+    state.turnTimer === null ||
+    state.turnTimer.teamId !== state.currentCard.activeTeamId
+  ) {
+    throw new AuctionRuleError('INVALID_TIMER_STATE')
+  }
+  if (elapsedSeconds === 0) {
+    return state
+  }
+
+  const remainingSeconds = state.turnTimer.remainingSeconds - elapsedSeconds
+  if (remainingSeconds <= 0) {
+    return passTurn(state, state.currentCard.activeTeamId)
+  }
+
+  return {
+    ...state,
+    turnTimer: { ...state.turnTimer, remainingSeconds },
+  }
 }
 
 export function getCurrentPlayerId(
