@@ -116,4 +116,27 @@ describe('M9 human vs AI auction harness', () => {
     unmount()
     expect(vi.getTimerCount()).toBe(0)
   })
+
+  it('visibly shows automatic emergency signings and marks them FREE without controls', () => {
+    const { store } = createAndStart(202610)
+
+    act(() => {
+      let ticks = 0
+      while (store.getState().auction?.status === 'IN_PROGRESS' && ticks < 3_000) {
+        store.getState().tick()
+        ticks += 1
+      }
+    })
+
+    expect(store.getState().auction?.status).toBe('COMPLETE')
+    const emergencyPanel = screen.getByRole('heading', {
+      name: 'Emergency Signings',
+    }).closest('section')!
+    expect(emergencyPanel).toBeInTheDocument()
+    expect(screen.getByText('Team A receives 6 emergency players')).toBeInTheDocument()
+    expect(screen.getAllByText('FREE')).toHaveLength(6)
+    expect(screen.getAllByText(/Emergency · Overall/)).toHaveLength(6)
+    expect(screen.queryByLabelText('Auction controls')).not.toBeInTheDocument()
+    expect(within(emergencyPanel).queryByRole('button')).not.toBeInTheDocument()
+  })
 })

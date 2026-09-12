@@ -45,6 +45,7 @@ function withTeamState(
       pricePaid: 1,
       round: 1,
     })),
+    emergencyPlayers: [],
   }
 
   return {

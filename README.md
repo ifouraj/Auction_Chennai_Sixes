@@ -1,6 +1,6 @@
 # Chennai Sixes Auction
 
-Playable M9 foundation for the Chennai Sixes Auction web game: one local human competes with three seeded, personality-driven AI bidders through the complete two-round auction.
+Playable M10 foundation for the Chennai Sixes Auction web game: one local human competes with three seeded, personality-driven AI bidders through the complete two-round auction, followed by automatic emergency signings for incomplete squads.
 
 ## Prerequisites
 
@@ -65,4 +65,4 @@ The project follows the Technical Design Document's layer boundaries:
 - `src/lib` contains external-client setup and shared infrastructure.
 - `src/tests` contains shared test setup plus future integration tests.
 
-M2-M9 currently provide the fictional player catalog, seeded player pool and private order, authoritative auction/bank/timer rules, Round 2, live team strength and automatic Best Six, the playable auction harness, and pure TypeScript AI bidding. Punishment players, match simulation, tournament play, persistence, multiplayer, and final presentation remain later milestones.
+M2-M10 currently provide the fictional normal-player catalog, seeded player pool and private order, authoritative auction/bank/timer rules, Round 2, live team strength and automatic Best Six, the playable auction harness, pure TypeScript AI bidding, and deterministic free emergency assignments from a separate punishment-player catalog. Match simulation, tournament play, persistence, multiplayer, and final presentation remain later milestones.

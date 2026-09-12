@@ -18,6 +18,11 @@ import { getMinimumLegalBid, validateBid } from './biddingRules'
 import { calculateBestSix, type BestSixResult } from './bestSix'
 import { createRandomSource } from './random'
 import { generateAIPersonalities } from './aiBidding'
+import {
+  assignEmergencyPlayers,
+  type EmergencyPlayerAssignment,
+  type EmergencySigningEvent,
+} from './emergencySignings'
 
 export type AuctionAction = 'BID' | 'PASS' | 'NOT_INTERESTED'
 export type AuctionStatus = 'IN_PROGRESS' | 'COMPLETE'
@@ -44,9 +49,12 @@ export interface AuctionTeamState {
   readonly balance: Money
   readonly purchasedPlayerCount: number
   readonly purchasedPlayers: readonly PurchasedPlayer[]
+  /** Free post-auction assignments; never SOLD purchases. */
+  readonly emergencyPlayers: readonly EmergencyPlayerAssignment[]
 }
 
 export interface PublicAuctionTeamState extends AuctionTeamState {
+  readonly availablePlayerCount: number
   readonly bestSix: BestSixResult
   readonly strength: BestSixResult['strength']
 }
@@ -109,6 +117,8 @@ export interface AuctionState {
   /** Players rejected for a second time and permanently removed in Round 2. */
   readonly rejectedPlayers: readonly Player[]
   readonly results: readonly AuctionCardResult[]
+  /** Public post-auction events, populated only when assignments occur. */
+  readonly emergencySignings: readonly EmergencySigningEvent[]
   readonly privateAuctionQueue: readonly Player[]
 }
 
@@ -297,6 +307,7 @@ export function startRound1Auction(
       balance: config.startingPurse,
       purchasedPlayerCount: 0,
       purchasedPlayers: [],
+      emergencyPlayers: [],
     })),
     selectedPool: [...pool.selectedPool],
     currentCard: null,
@@ -306,6 +317,7 @@ export function startRound1Auction(
     unsoldPlayers: [],
     rejectedPlayers: [],
     results: [],
+    emergencySignings: [],
     privateAuctionQueue: [...pool.auctionQueue],
   }
 
@@ -322,8 +334,17 @@ export function getPublicAuctionState(
     participants: state.participants,
     startingPurse: state.startingPurse,
     teams: state.teams.map((team) => {
-      const bestSix = calculateBestSix(team.purchasedPlayers)
-      return { ...team, bestSix, strength: bestSix.strength }
+      const availablePlayers = [
+        ...team.purchasedPlayers,
+        ...team.emergencyPlayers,
+      ]
+      const bestSix = calculateBestSix(availablePlayers)
+      return {
+        ...team,
+        availablePlayerCount: availablePlayers.length,
+        bestSix,
+        strength: bestSix.strength,
+      }
     }),
     selectedPool: state.selectedPool,
     currentCard: state.currentCard,
@@ -333,6 +354,7 @@ export function getPublicAuctionState(
     unsoldPlayers: state.unsoldPlayers,
     rejectedPlayers: state.rejectedPlayers,
     results: state.results,
+    emergencySignings: state.emergencySignings,
   }
 }
 
@@ -454,10 +476,13 @@ function completeOrStartRound2(state: AuctionState): AuctionState {
     })
   }
 
+  const emergency = assignEmergencyPlayers(state.teams, state.seed)
   return {
     ...state,
     phase: 'COMPLETE',
     status: 'COMPLETE',
+    teams: emergency.teams,
+    emergencySignings: emergency.events,
     currentCard: null,
     turnTimer: null,
   }

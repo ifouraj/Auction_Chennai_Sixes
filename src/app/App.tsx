@@ -16,7 +16,7 @@ function Header({ state }: { state: AuctionHarnessState }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-4">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">M9 playable auction</p>
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">M10 playable auction</p>
         <h1 className="text-2xl font-black uppercase tracking-wide text-white">Chennai Sixes Auction</h1>
       </div>
       {auction && (
@@ -73,6 +73,7 @@ function participantForTeam(participants: readonly AuctionParticipant[], teamId:
 }
 
 function teamStatus(auction: PublicAuctionState, teamId: TeamId): string {
+  if (auction.status === 'COMPLETE') return 'SQUAD'
   const card = auction.currentCard
   if (card === null) return 'WAITING'
   if (card.activeTeamId === teamId) return 'TURN'
@@ -100,7 +101,7 @@ function TeamCard({ auction, team, selected, onSelect }: {
         </span>
         <span className="mt-3 grid grid-cols-2 gap-3 text-sm">
           <span><span className="block text-xs uppercase text-slate-500">Balance</span><strong className="text-lg text-white">{team.balance}</strong></span>
-          <span><span className="block text-xs uppercase text-slate-500">Players</span><strong className="text-lg text-white">{team.purchasedPlayerCount}</strong></span>
+          <span><span className="block text-xs uppercase text-slate-500">Available</span><strong className="text-lg text-white">{team.availablePlayerCount}</strong></span>
         </span>
         <dl
           aria-label={`${teamName(team.teamId)} strength`}
@@ -120,7 +121,7 @@ function TeamCard({ auction, team, selected, onSelect }: {
             </div>
           ))}
         </dl>
-        <span className="mt-2 block text-xs text-slate-500">Seat {(participant?.seatIndex ?? 0) + 1} · {participant?.kind === 'AI' ? 'AI' : 'Human'} · Select purchases</span>
+        <span className="mt-2 block text-xs text-slate-500">Seat {(participant?.seatIndex ?? 0) + 1} · {participant?.kind === 'AI' ? 'AI' : 'Human'} · {team.purchasedPlayerCount} bought{team.emergencyPlayers.length > 0 ? ` + ${team.emergencyPlayers.length} emergency` : ''} · Select squad</span>
       </button>
       {isActive && (
         <div className="mt-3 flex items-end justify-between border-t border-cyan-800 pt-3">
@@ -164,28 +165,65 @@ function BoughtPlayers({ auction, selectedTeamId, onSelectTeam }: {
   onSelectTeam: (teamId: TeamId) => void
 }) {
   const selectedTeam = auction.teams.find((team) => team.teamId === selectedTeamId) ?? auction.teams[0]
+  const squad = [
+    ...selectedTeam.purchasedPlayers.map((purchase) => ({
+      ...purchase,
+      source: 'AUCTION' as const,
+    })),
+    ...selectedTeam.emergencyPlayers.map((assignment) => ({
+      ...assignment,
+      pricePaid: 0,
+    })),
+  ]
   return (
     <aside className="rounded-lg border border-slate-700 bg-slate-900 p-4" aria-labelledby="bought-players-title">
-      <h2 className="text-sm font-black uppercase tracking-[0.16em] text-white" id="bought-players-title">Bought Players</h2>
+      <h2 className="text-sm font-black uppercase tracking-[0.16em] text-white" id="bought-players-title">Bought Players / Squad</h2>
       <label className="mt-4 block text-xs font-bold uppercase tracking-wider text-slate-500" htmlFor="bought-team">Team</label>
       <select className="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2 font-semibold text-white" id="bought-team" onChange={(event) => onSelectTeam(event.target.value)} value={selectedTeam.teamId}>
         {auction.teams.map((team) => <option key={team.teamId} value={team.teamId}>{teamName(team.teamId)}</option>)}
       </select>
-      {selectedTeam.purchasedPlayers.length === 0 ? <p className="mt-5 text-sm text-slate-500">No players purchased yet.</p> : (
+      {squad.length === 0 ? <p className="mt-5 text-sm text-slate-500">No players purchased yet.</p> : (
         <ul aria-label={`${teamName(selectedTeam.teamId)} purchased players`} className="mt-4 divide-y divide-slate-800">
-          {selectedTeam.purchasedPlayers.map(({ player, pricePaid }) => (
+          {squad.map(({ player, pricePaid, source }) => (
             <li className="flex items-start justify-between gap-3 py-3 text-sm" key={player.id}>
               <span className="font-semibold text-slate-200">
                 {player.name}
                 {selectedTeam.bestSix.playerIds.includes(player.id) && (
                   <span aria-label={`${player.name} is in automatic Best Six`} className="ml-2 rounded bg-cyan-400/15 px-1.5 py-0.5 text-[0.6rem] font-black tracking-wider text-cyan-300">BEST SIX</span>
                 )}
-              </span><span className="shrink-0 font-black text-amber-300">{pricePaid}</span>
+                {source === 'EMERGENCY' && (
+                  <span className="mt-1 block text-[0.65rem] font-black uppercase tracking-wider text-rose-300">Emergency · Overall {player.overall}</span>
+                )}
+              </span><span className={`shrink-0 font-black ${source === 'EMERGENCY' ? 'text-rose-300' : 'text-amber-300'}`}>{source === 'EMERGENCY' ? 'FREE' : `₹${pricePaid}`}</span>
             </li>
           ))}
         </ul>
       )}
     </aside>
+  )
+}
+
+function EmergencySignings({ auction }: { auction: PublicAuctionState }) {
+  if (auction.emergencySignings.length === 0) return null
+  return (
+    <section className="mb-5 rounded-lg border border-rose-500 bg-rose-950/70 p-5" aria-labelledby="emergency-signings-title">
+      <h2 className="text-xl font-black uppercase tracking-wide text-rose-200" id="emergency-signings-title">Emergency Signings</h2>
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        {auction.emergencySignings.map((event) => (
+          <article className="rounded border border-rose-800 bg-slate-950/50 p-4" key={event.teamId}>
+            <h3 className="font-black text-white">{teamName(event.teamId)} receives {event.players.length} emergency {event.players.length === 1 ? 'player' : 'players'}</h3>
+            <ul className="mt-3 space-y-2" aria-label={`${teamName(event.teamId)} emergency players`}>
+              {event.players.map(({ player }) => (
+                <li className="text-sm text-slate-200" key={player.id}>
+                  <span className="font-bold text-rose-200">{player.name}</span>
+                  <span className="block text-xs text-slate-400">Overall {player.overall} · BAT {player.batting} · BOWL {player.bowling} · WK {player.wicketKeeping} · LEAD {player.leadership}</span>
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -248,26 +286,24 @@ function Auction({ state }: { state: AuctionHarnessState }) {
   if (auction === null) return null
   const lastResultText = lastResult?.outcome === 'SOLD' ? `SOLD: ${lastResult.player.name} to ${teamName(lastResult.buyerTeamId)} for ${lastResult.price}` : lastResult?.outcome === 'UNSOLD' ? `UNSOLD: ${lastResult.player.name}` : null
 
-  if (auction.status === 'COMPLETE') {
-    return <section className="mt-6 rounded border border-emerald-500 bg-emerald-950 p-8 text-center"><h2 className="text-4xl font-black text-emerald-200">AUCTION COMPLETE</h2><p className="mt-2 text-emerald-100">Use New Game to create another fresh auction.</p></section>
-  }
-
   const topTeams = auction.teams.slice(0, 2)
   const bottomTeams = auction.teams.slice(2, 4)
   return (
     <div className="mt-5">
+      {auction.status === 'COMPLETE' && <section className="mb-5 rounded border border-emerald-500 bg-emerald-950 p-6 text-center"><h2 className="text-3xl font-black text-emerald-200">AUCTION COMPLETE</h2><p className="mt-2 text-emerald-100">Emergency assignments are complete. Every team now has at least six available players.</p></section>}
+      <EmergencySignings auction={auction} />
       {auction.phase === 'ROUND_2' && <p role="status" className="mb-4 rounded border border-violet-500 bg-violet-950 p-3 text-center font-bold text-violet-200">Round 2 has started — unsold players return with no base price.</p>}
       {lastResultText && <p role="status" className="mb-4 rounded border border-amber-500 bg-amber-950 p-3 text-center font-bold text-amber-200">{lastResultText}</p>}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(220px,0.75fr)_minmax(520px,2fr)_minmax(220px,0.75fr)]">
         <BoughtPlayers auction={auction} selectedTeamId={selectedTeamId} onSelectTeam={setSelectedTeamId} />
         <section aria-label="Four teams" className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">{topTeams.map((team) => <TeamCard auction={auction} key={team.teamId} onSelect={() => setSelectedTeamId(team.teamId)} selected={selectedTeamId === team.teamId} team={team} />)}</div>
-          <PlayerCard auction={auction} />
+          {auction.status === 'IN_PROGRESS' && <PlayerCard auction={auction} />}
           <div className="grid gap-4 sm:grid-cols-2">{bottomTeams.map((team) => <TeamCard auction={auction} key={team.teamId} onSelect={() => setSelectedTeamId(team.teamId)} selected={selectedTeamId === team.teamId} team={team} />)}</div>
         </section>
         <AuctionHistory auction={auction} />
       </div>
-      <div className="-mx-6 mt-5"><Controls auction={auction} feedback={state.feedback} bid={state.bid} pass={state.pass} notInterested={state.notInterested} key={`${auction.round}-${auction.currentCard?.cardNumber}-${auction.currentCard?.highestBid}`} /></div>
+      {auction.status === 'IN_PROGRESS' && <div className="-mx-6 mt-5"><Controls auction={auction} feedback={state.feedback} bid={state.bid} pass={state.pass} notInterested={state.notInterested} key={`${auction.round}-${auction.currentCard?.cardNumber}-${auction.currentCard?.highestBid}`} /></div>}
     </div>
   )
 }

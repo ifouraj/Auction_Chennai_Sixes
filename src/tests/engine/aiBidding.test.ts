@@ -87,6 +87,8 @@ function team(
     balance,
     purchasedPlayerCount: owned.length,
     purchasedPlayers,
+    emergencyPlayers: [],
+    availablePlayerCount: owned.length,
     bestSix,
     strength: bestSix.strength,
   }
