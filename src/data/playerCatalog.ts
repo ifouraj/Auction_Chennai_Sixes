@@ -25,7 +25,7 @@ function normalPlayer(
     wicketKeeping,
     leadership,
     overall,
-    basePrice,
+    basePrice: Math.ceil(basePrice / 10) * 10,
     kind: 'NORMAL',
     ...(imageRef === undefined ? {} : { imageRef }),
   }

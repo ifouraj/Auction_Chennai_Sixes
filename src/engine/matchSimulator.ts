@@ -15,6 +15,23 @@ export interface MatchInnings {
   readonly balls: number
   /** Cricket notation: 4.2 means four overs and two balls, not a decimal. */
   readonly overs: string
+  readonly batting: readonly BattingPerformance[]
+  readonly bowling: readonly BowlingPerformance[]
+}
+
+export interface BattingPerformance {
+  readonly playerId: string
+  readonly playerName: string
+  readonly runs: number
+  readonly notOut: boolean
+}
+
+export interface BowlingPerformance {
+  readonly playerId: string
+  readonly playerName: string
+  readonly wickets: number
+  readonly runsConceded: number
+  readonly balls: number
 }
 
 export type MatchMargin =
@@ -191,6 +208,7 @@ function deliveryWeights(
 
 function simulateInnings(
   battingTeam: MatchTeamInput,
+  fieldingTeam: MatchTeamInput,
   battingStrength: SquadStrength,
   fieldingStrength: SquadStrength,
   random: RandomSource,
@@ -202,6 +220,12 @@ function simulateInnings(
   let runs = 0
   let wickets = 0
   let balls = 0
+  const batting = battingTeam.bestSix.map((player) => ({
+    playerId: player.id, playerName: player.name, runs: 0, dismissed: false,
+  }))
+  const bowling = fieldingTeam.bestSix.map((player) => ({
+    playerId: player.id, playerName: player.name, wickets: 0, runsConceded: 0, balls: 0,
+  }))
   const formRange = random.next() < MATCH_SIMULATION_CONFIG.chaosFormChance
     ? MATCH_SIMULATION_CONFIG.chaosFormSwing
     : MATCH_SIMULATION_CONFIG.normalFormSwing
@@ -212,6 +236,8 @@ function simulateInnings(
     wickets < maximumWickets &&
     (chaseTarget === null || runs < chaseTarget)
   ) {
+    const batterIndex = Math.min(wickets, batting.length - 1)
+    const bowlerIndex = Math.floor(balls / MATCH_SIMULATION_CONFIG.ballsPerOver) % bowling.length
     const outcome = chooseWeighted(
       random,
       deliveryWeights(
@@ -224,11 +250,25 @@ function simulateInnings(
       ),
     )
     balls += 1
-    if (outcome === 'WICKET') wickets += 1
-    else runs += outcome
+    bowling[bowlerIndex].balls += 1
+    if (outcome === 'WICKET') {
+      wickets += 1
+      batting[batterIndex].dismissed = true
+      bowling[bowlerIndex].wickets += 1
+    } else {
+      runs += outcome
+      batting[batterIndex].runs += outcome
+      bowling[bowlerIndex].runsConceded += outcome
+    }
   }
 
-  return { teamId: battingTeam.teamId, runs, wickets, balls, overs: ballsToOvers(balls) }
+  return {
+    teamId: battingTeam.teamId, runs, wickets, balls, overs: ballsToOvers(balls),
+    batting: batting
+      .filter((performance, index) => performance.dismissed || performance.runs > 0 || index === wickets)
+      .map(({ dismissed, ...performance }) => ({ ...performance, notOut: !dismissed })),
+    bowling: bowling.filter(({ balls: delivered }) => delivered > 0),
+  }
 }
 
 function tiebreakWinner(
@@ -281,9 +321,10 @@ export function simulateMatch(
   const secondTeam = teamABatsFirst ? teamB : teamA
   const firstStrength = teamABatsFirst ? teamAStrength : teamBStrength
   const secondStrength = teamABatsFirst ? teamBStrength : teamAStrength
-  const firstInnings = simulateInnings(firstTeam, firstStrength, secondStrength, random, null)
+  const firstInnings = simulateInnings(firstTeam, secondTeam, firstStrength, secondStrength, random, null)
   const secondInnings = simulateInnings(
     secondTeam,
+    firstTeam,
     secondStrength,
     firstStrength,
     random,

@@ -23,7 +23,7 @@ describe('M12 seeded full V1 gameplay loop', () => {
     expect(auction.teams.every(({ bestSix }) => bestSix.isComplete && bestSix.playerIds.length === 6)).toBe(true)
     expect(store.getState().tournament?.revealedLeagueMatches).toHaveLength(1)
     expect(store.getState().tournament?.finalMatch).toBeNull()
-    for (let step = 0; step < 7; step += 1) store.getState().advanceTournament()
+    for (let step = 0; step < 13; step += 1) store.getState().advanceTournament()
     const tournament = store.getState().tournament!
     expect(tournament.revealedLeagueMatches).toHaveLength(6)
     expect(tournament.standings).toHaveLength(4)
@@ -35,7 +35,7 @@ describe('M12 seeded full V1 gameplay loop', () => {
     replay.getState().createGame(202612)
     replay.getState().startAuction()
     while (replay.getState().auction?.status === 'IN_PROGRESS') replay.getState().tick()
-    for (let step = 0; step < 7; step += 1) replay.getState().advanceTournament()
+    for (let step = 0; step < 13; step += 1) replay.getState().advanceTournament()
     expect(replay.getState().tournament).toEqual(tournament)
   })
 })

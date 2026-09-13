@@ -140,7 +140,7 @@ describe('M6 Round 2 unsold auction', () => {
       ok: false,
       reason: 'BID_MUST_EXCEED_CURRENT',
     })
-    expect(validateBid(state, challenger, MINIMUM_LEGAL_MONEY_UNIT + 1)).toEqual({ ok: true })
+    expect(validateBid(state, challenger, MINIMUM_LEGAL_MONEY_UNIT * 2)).toEqual({ ok: true })
   })
 
   it('keeps M5 bank rules and financial skipping in force', () => {

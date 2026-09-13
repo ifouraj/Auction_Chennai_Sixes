@@ -123,7 +123,7 @@ describe('M11 deterministic Sixes match simulator', () => {
     )).toBe(true)
   })
 
-  it('publishes compact totals and winner data without individual scorecards', () => {
+  it('publishes deterministic individual scorecards that reconcile with innings totals', () => {
     const result = simulateMatch(team('team-a'), team('team-b'), 1234)
 
     expect(result).toMatchObject({
@@ -145,9 +145,12 @@ describe('M11 deterministic Sixes match simulator', () => {
       tiebreakRequired: expect.any(Boolean),
       resultText: expect.any(String),
     })
-    expect(result).not.toHaveProperty('scorecard')
-    expect(result.firstInnings).not.toHaveProperty('batters')
-    expect(result.firstInnings).not.toHaveProperty('bowlers')
+    for (const innings of [result.firstInnings, result.secondInnings]) {
+      expect(innings.batting.reduce((sum, batter) => sum + batter.runs, 0)).toBe(innings.runs)
+      expect(innings.bowling.reduce((sum, bowler) => sum + bowler.wickets, 0)).toBe(innings.wickets)
+      expect(innings.bowling.reduce((sum, bowler) => sum + bowler.runsConceded, 0)).toBe(innings.runs)
+      expect(innings.bowling.reduce((sum, bowler) => sum + bowler.balls, 0)).toBe(innings.balls)
+    }
   })
 
   it('invokes a deterministic decisive tiebreak when regulation totals tie', () => {

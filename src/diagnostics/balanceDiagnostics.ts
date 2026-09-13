@@ -96,6 +96,14 @@ export interface CompleteGameDiagnostic {
   readonly matchUpsets: number
   readonly unequalStrengthMatches: number
   readonly teams: readonly DiagnosticTeamResult[]
+  readonly playerOutcomes: readonly {
+    readonly playerId: string
+    readonly overall: number
+    readonly purchased: boolean
+    readonly price: number
+    readonly round: 1 | 2 | null
+    readonly lateRound2: boolean
+  }[]
 }
 
 export interface BalanceDiagnosticReport {
@@ -149,6 +157,15 @@ export interface BalanceDiagnosticReport {
     Record<keyof AIBidderPersonality, { readonly spend: number; readonly bids: number }>
   >
   readonly gamesDetail: readonly CompleteGameDiagnostic[]
+  readonly qualityBands: Readonly<Record<'elite' | 'strong' | 'average' | 'weak' | 'veryWeak', {
+    readonly appearances: number
+    readonly purchases: number
+    readonly purchaseRate: number
+    readonly unsoldRate: number
+    readonly averagePrice: number
+  }>>
+  readonly lateRound2Purchases: number
+  readonly lateRound2AveragePrice: number
 }
 
 export function createDiagnosticParticipants(
@@ -260,6 +277,21 @@ export function simulateCompleteDiagnosticGame(seed: number): CompleteGameDiagno
     round1Unsold: 25 - round1Purchases.length,
     round2Sold: round2Purchases.length,
     round2Rejected: state.rejectedPlayers.length,
+    playerOutcomes: state.selectedPool.map((player) => {
+      const purchase = state.teams.flatMap(({ purchasedPlayers }) => purchasedPlayers)
+        .find(({ player: bought }) => bought.id === player.id)
+      const result = state.results.find((candidate) =>
+        candidate.outcome === 'SOLD' && candidate.player.id === player.id)
+      return {
+        playerId: player.id,
+        overall: player.overall,
+        purchased: purchase !== undefined,
+        price: purchase?.pricePaid ?? 0,
+        round: purchase?.round ?? null,
+        lateRound2: purchase?.round === 2 && result !== undefined
+          && result.cardNumber > state.totalPlayers / 2,
+      }
+    }),
     matchUpsets,
     unequalStrengthMatches: unequalMatches.length,
     teams: publicState.teams.map((team) => {
@@ -412,6 +444,7 @@ export function runBalanceDiagnostics(seedStart: number, seedEnd: number): Balan
     (_, index) => simulateCompleteDiagnosticGame(seedStart + index),
   )
   const teams = games.flatMap(({ teams: gameTeams }) => gameTeams)
+  const playerOutcomes = games.flatMap(({ playerOutcomes: outcomes }) => outcomes)
   const purchasePrices = teams.flatMap((team) => team.purchasePrices)
   const championshipsBySeat = [0, 0, 0, 0]
   const championshipsByStrengthRank = [0, 0, 0, 0]
@@ -447,6 +480,23 @@ export function runBalanceDiagnostics(seedStart: number, seedEnd: number): Balan
       overall: mean(seatTeams.map(({ strength }) => strength.overall)),
     }
   })
+  const bandFor = (overall: number): 'elite' | 'strong' | 'average' | 'weak' | 'veryWeak' =>
+    overall >= 90 ? 'elite' : overall >= 80 ? 'strong' : overall >= 60 ? 'average'
+      : overall >= 40 ? 'weak' : 'veryWeak'
+  const qualityBands = Object.fromEntries(
+    (['elite', 'strong', 'average', 'weak', 'veryWeak'] as const).map((band) => {
+      const appearances = playerOutcomes.filter(({ overall }) => bandFor(overall) === band)
+      const purchases = appearances.filter(({ purchased }) => purchased)
+      return [band, {
+        appearances: appearances.length,
+        purchases: purchases.length,
+        purchaseRate: purchases.length / Math.max(1, appearances.length),
+        unsoldRate: (appearances.length - purchases.length) / Math.max(1, appearances.length),
+        averagePrice: mean(purchases.map(({ price }) => price)),
+      }]
+    }),
+  ) as BalanceDiagnosticReport['qualityBands']
+  const lateRound2 = playerOutcomes.filter(({ lateRound2 }) => lateRound2)
 
   return {
     startingPurse: DEFAULT_STARTING_PURSE,
@@ -497,6 +547,9 @@ export function runBalanceDiagnostics(seedStart: number, seedEnd: number): Balan
       NOT_INTERESTED: teams.reduce((sum, team) => sum + team.notInterested, 0) / Math.max(1, totalActions),
     },
     personalityBehaviorCorrelations,
+    qualityBands,
+    lateRound2Purchases: lateRound2.length,
+    lateRound2AveragePrice: mean(lateRound2.map(({ price }) => price)),
     gamesDetail: games,
   }
 }

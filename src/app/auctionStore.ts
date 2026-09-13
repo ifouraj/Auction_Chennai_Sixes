@@ -1,6 +1,7 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 
 import type { AuctionParticipant, Player, PlayerPool, TeamId } from '../domain/types'
+import { FRANCHISES, selectGameFranchises } from '../domain/franchises'
 import {
   createAIAuctionDecisionContext,
   createAIDecisionRandom,
@@ -55,14 +56,14 @@ export interface AITurnIdentity {
 }
 
 export const TEAM_NAMES: Readonly<Record<TeamId, string>> = {
-  'team-a': 'Team A',
-  'team-b': 'Team B',
-  'team-c': 'Team C',
-  'team-d': 'Team D',
+  'team-a': FRANCHISES[0].name,
+  'team-b': FRANCHISES[1].name,
+  'team-c': FRANCHISES[2].name,
+  'team-d': FRANCHISES[3].name,
 }
 
 export type HarnessStage = 'WELCOME' | 'PRE_AUCTION' | 'AUCTION'
-export type TournamentStage = 'LEAGUE' | 'LEAGUE_COMPLETE' | 'FINAL_READY' | 'GAME_OVER'
+export type TournamentStage = 'MATCH' | 'STANDINGS' | 'LEAGUE_COMPLETE' | 'FINAL_READY' | 'GAME_OVER'
 
 export interface PublicTournamentProgress {
   readonly tournamentId: string
@@ -87,6 +88,9 @@ export interface AuctionHarnessState {
   readonly announcementId: number
   readonly publicAiPersonalities: Readonly<Partial<Record<TeamId, PublicAIPersonalityLabel>>>
   readonly gameId: number
+  readonly selectedFranchiseId: string
+  readonly teamNames: Readonly<Record<TeamId, string>>
+  selectFranchise: (franchiseId: string) => void
   createGame: (seed?: number) => void
   startAuction: () => void
   bid: (amount: number) => void
@@ -109,8 +113,9 @@ const errorMessages: Readonly<Record<string, string>> = {
   TEAM_NOT_INTERESTED: 'This team has left bidding for this player.',
   HIGHEST_BIDDER_CANNOT_RAISE_SELF: 'The highest bidder cannot bid against itself.',
   BID_MUST_BE_INTEGER: 'Bid must be a whole number.',
+  BID_MUST_USE_LEGAL_INCREMENT: 'Bids must use clean ₹10 lakh increments.',
   BID_BELOW_BASE_PRICE: 'Bid is below the Round 1 base price.',
-  BID_BELOW_MINIMUM_MONEY_UNIT: 'Round 2 opening bid must be at least 1.',
+  BID_BELOW_MINIMUM_MONEY_UNIT: 'Round 2 opening bid must be at least ₹10 lakh.',
   BID_MUST_EXCEED_CURRENT: 'Bid must be greater than the current highest bid.',
   BID_EXCEEDS_BALANCE: 'Bid exceeds this team\'s balance.',
   BID_MUST_LEAVE_NON_ZERO_BALANCE: 'Bank rule: this team must retain a non-zero balance.',
@@ -146,6 +151,7 @@ export function createAuctionHarnessStore(
   let fullTournament: TournamentResult | null = null
   let tournamentTeams: readonly TournamentTeamInput[] = []
   let heldResultPlayer: Player | null = null
+  let selectedFranchiseId = FRANCHISES[0].id
 
   const auctionForPresentation = (state: PublicAuctionState): PublicAuctionState =>
     heldResultPlayer === null || state.currentCard === null
@@ -173,7 +179,7 @@ export function createAuctionHarnessStore(
 
   const tournamentFromAuction = (): PublicTournamentProgress | null => {
     if (engineState?.status !== 'COMPLETE') return null
-    if (fullTournament !== null) return publicTournament('LEAGUE', 1)
+    if (fullTournament !== null) return publicTournament('MATCH', 1)
     const publicState = getPublicAuctionState(engineState)
     tournamentTeams = publicState.teams.map((team): TournamentTeamInput => {
       const participant = publicState.participants.find(
@@ -190,7 +196,7 @@ export function createAuctionHarnessStore(
       return { teamId: team.teamId, seatIndex: participant.seatIndex, bestSix }
     })
     fullTournament = simulateTournament(tournamentTeams, currentGameSeed)
-    return publicTournament('LEAGUE', 1)
+    return publicTournament('MATCH', 1)
   }
 
   return create<AuctionHarnessState>((set) => {
@@ -244,6 +250,14 @@ export function createAuctionHarnessStore(
       announcementId,
       publicAiPersonalities: {},
       gameId,
+      selectedFranchiseId,
+      teamNames: TEAM_NAMES,
+      selectFranchise: (franchiseId) => {
+        if (FRANCHISES.some(({ id }) => id === franchiseId)) {
+          selectedFranchiseId = franchiseId
+          set({ selectedFranchiseId: franchiseId })
+        }
+      },
       quitConfirmationOpen: false,
       createGame: (seed = initialSeed ?? Date.now()) => {
         gameId += 1
@@ -254,6 +268,11 @@ export function createAuctionHarnessStore(
         tournamentTeams = []
         heldResultPlayer = null
         decisionRandom = createAIDecisionRandom(seed)
+        const franchises = selectGameFranchises(selectedFranchiseId, seed)
+        const teamNames = Object.fromEntries(Object.entries(franchises).map(([teamId, franchise]) =>
+          [teamId, franchise.name],
+        ))
+        Object.assign(TEAM_NAMES, teamNames)
         set({
           stage: 'PRE_AUCTION',
           auctionPlayerCount: pendingPool.selectedPool.length,
@@ -266,6 +285,7 @@ export function createAuctionHarnessStore(
           announcementId,
           publicAiPersonalities: {},
           gameId,
+          teamNames,
           quitConfirmationOpen: false,
         })
       },
@@ -403,13 +423,16 @@ export function createAuctionHarnessStore(
         const tournament = state.tournament
         if (tournament === null || fullTournament === null) return state
         const revealedCount = tournament.revealedLeagueMatches.length
-        if (tournament.stage === 'LEAGUE') {
+        if (tournament.stage === 'MATCH') {
+          return { tournament: publicTournament(
+            revealedCount === fullTournament.leagueMatches.length ? 'LEAGUE_COMPLETE' : 'STANDINGS',
+            revealedCount,
+          ) }
+        }
+        if (tournament.stage === 'STANDINGS') {
           const nextCount = Math.min(fullTournament.leagueMatches.length, revealedCount + 1)
           return {
-            tournament: publicTournament(
-              nextCount === fullTournament.leagueMatches.length ? 'LEAGUE_COMPLETE' : 'LEAGUE',
-              nextCount,
-            ),
+            tournament: publicTournament('MATCH', nextCount),
           }
         }
         if (tournament.stage === 'LEAGUE_COMPLETE') {

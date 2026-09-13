@@ -125,7 +125,7 @@ describe('M5 purse and bank rules', () => {
   it('deducts exactly the SOLD price and adds the player exactly once', () => {
     const initial = createAuction()
     const player = initial.currentCard!.player
-    const price = player.basePrice + 17
+    const price = player.basePrice + 20
     let state = placeBid(initial, 'team-a', price)
     state = passUntilCurrentCardResolves(state)
 
@@ -210,7 +210,7 @@ describe('M5 purse and bank rules', () => {
     let state = placeBid(initial, 'team-a', price)
     state = passTurn(state, 'team-b')
     state = passTurn(state, 'team-c')
-    state = placeBid(state, 'team-d', price + 1)
+    state = placeBid(state, 'team-d', price + 10)
 
     expect(state.currentCard).toMatchObject({
       highestBidderId: 'team-d',

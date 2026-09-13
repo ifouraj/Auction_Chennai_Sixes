@@ -33,7 +33,7 @@ describe('progressive public tournament state', () => {
     const store = completedStore(202611)
     const completeResult = simulateTournament(tournamentInputs(store), 202611)
     expect(store.getState().tournament).toMatchObject({
-      stage: 'LEAGUE',
+      stage: 'MATCH',
       revealedLeagueMatches: [expect.any(Object)],
       finalistTeamIds: null,
       finalMatch: null,
@@ -49,6 +49,8 @@ describe('progressive public tournament state', () => {
     for (let count = 2; count <= 6; count += 1) {
       const previousIds = store.getState().tournament!.revealedLeagueMatches.map(({ matchId }) => matchId)
       store.getState().advanceTournament()
+      expect(store.getState().tournament?.stage).toBe('STANDINGS')
+      store.getState().advanceTournament()
       const progress = store.getState().tournament!
       expect(progress.revealedLeagueMatches).toHaveLength(count)
       expect(progress.revealedLeagueMatches.slice(0, -1).map(({ matchId }) => matchId)).toEqual(previousIds)
@@ -56,6 +58,8 @@ describe('progressive public tournament state', () => {
       expect(progress.standings.reduce((sum, standing) => sum + standing.won, 0)).toBe(count)
       expect(progress.finalMatch).toBeNull()
     }
+
+    store.getState().advanceTournament()
 
     expect(store.getState().tournament?.stage).toBe('LEAGUE_COMPLETE')
     expect(store.getState().tournament?.finalistTeamIds).toEqual(
@@ -69,7 +73,7 @@ describe('progressive public tournament state', () => {
     const flows = new Map<boolean, { store: ReturnType<typeof completedStore>; seed: number }>()
     for (let seed = 1; seed <= 20 && flows.size < 2; seed += 1) {
       const store = completedStore(seed)
-      for (let step = 0; step < 5; step += 1) store.getState().advanceTournament()
+      for (let step = 0; step < 11; step += 1) store.getState().advanceTournament()
       const qualified = store.getState().tournament!.finalistTeamIds!.includes('team-a')
       if (!flows.has(qualified)) flows.set(qualified, { store, seed })
     }

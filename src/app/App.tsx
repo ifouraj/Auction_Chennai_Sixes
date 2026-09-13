@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { AI_PRESENTATION_DELAY_MS, AUCTION_RESULT_HOLD_MS } from '../domain/constants'
+import { AI_PRESENTATION_DELAY_MS, AUCTION_RESULT_HOLD_MS, MINIMUM_LEGAL_MONEY_UNIT } from '../domain/constants'
+import { FRANCHISES } from '../domain/franchises'
 import type { AuctionParticipant, TeamId } from '../domain/types'
 import type { PublicAuctionState, PublicAuctionTeamState } from '../engine/auctionEngine'
 import type { MatchResult } from '../engine/matchSimulator'
 import { announceAuctionEvent, type AuctionPresentationEvent } from '../presentation/auctionAnnouncer'
 import { classifyMatch } from '../presentation/matchFlavor'
+import { formatMoney } from '../presentation/money'
 import { TEAM_NAMES, useAuctionHarness, type AuctionHarnessState } from './auctionStore'
 
 type HarnessStore = typeof useAuctionHarness
@@ -35,13 +37,16 @@ function Header({ state }: { state: AuctionHarnessState }) {
   )
 }
 
-function Welcome({ createGame }: { createGame: () => void }) {
+function Welcome({ state }: { state: AuctionHarnessState }) {
   return (
     <section className="grid min-h-[65vh] place-items-center text-center">
       <div>
-        <h2 className="text-2xl font-bold">Human vs three AI bidders</h2>
-        <p className="mt-2 max-w-xl text-slate-400">You control Team A. Three seeded AI bidders control the remaining seats under the same auction rules.</p>
-        <button className="mt-6 rounded bg-cyan-500 px-6 py-3 font-bold text-slate-950 hover:bg-cyan-400" onClick={() => createGame()}>
+        <h2 className="text-2xl font-bold">Choose your franchise</h2>
+        <p className="mt-2 max-w-2xl text-slate-400">Three distinct AI opponents will be selected from the remaining franchises. Every team starts equal.</p>
+        <div className="mt-6 grid max-w-5xl gap-3 text-left sm:grid-cols-2 lg:grid-cols-5" role="radiogroup" aria-label="Choose franchise">
+          {FRANCHISES.map((franchise) => <button aria-checked={state.selectedFranchiseId === franchise.id} className={`rounded border p-3 ${state.selectedFranchiseId === franchise.id ? 'border-cyan-300 bg-cyan-950' : 'border-slate-700 bg-slate-900'}`} key={franchise.id} onClick={() => state.selectFranchise(franchise.id)} role="radio" type="button"><span className="block font-black text-white">{franchise.name}</span><span className="mt-1 block text-xs text-slate-400">{franchise.note}</span></button>)}
+        </div>
+        <button className="mt-6 rounded bg-cyan-500 px-6 py-3 font-bold text-slate-950 hover:bg-cyan-400" onClick={() => state.createGame()}>
           Start New Auction Game
         </button>
       </div>
@@ -62,7 +67,7 @@ function PreAuction({ playerCount, startAuction }: { playerCount: number; startA
       <dl className="mt-5 grid gap-3 sm:grid-cols-3" aria-label="Auction rules summary">
         <div className="rounded border border-slate-700 bg-slate-900 p-4"><dt className="text-xs uppercase text-slate-500">Players</dt><dd className="mt-1 text-2xl font-black">{playerCount}</dd></div>
         <div className="rounded border border-slate-700 bg-slate-900 p-4"><dt className="text-xs uppercase text-slate-500">Team seats</dt><dd className="mt-1 text-2xl font-black">4</dd></div>
-        <div className="rounded border border-slate-700 bg-slate-900 p-4"><dt className="text-xs uppercase text-slate-500">Starting purse</dt><dd className="mt-1 text-2xl font-black">₹300</dd></div>
+        <div className="rounded border border-slate-700 bg-slate-900 p-4"><dt className="text-xs uppercase text-slate-500">Starting purse</dt><dd className="mt-1 text-2xl font-black">{formatMoney(300)}</dd></div>
       </dl>
     </section>
   )
@@ -107,7 +112,7 @@ function TeamCard({ auction, team, selected, onSelect, announcerFocus, personali
           <span className={`rounded px-2 py-1 text-[0.65rem] font-black tracking-wider ${isActive ? 'bg-cyan-300 text-slate-950' : status === 'LEADING' ? 'bg-emerald-400/20 text-emerald-300' : 'bg-slate-800 text-slate-300'}`}>{status}</span>
         </span>
         <span className="mt-3 grid grid-cols-2 gap-3 text-sm">
-          <span><span className="block text-xs uppercase text-slate-500">Balance</span><strong className="text-lg text-white">₹{team.balance}</strong></span>
+          <span><span className="block text-xs uppercase text-slate-500">Balance</span><strong className="text-lg text-white">{formatMoney(team.balance)}</strong></span>
           <span><span className="block text-xs uppercase text-slate-500">Players</span><strong className="text-lg text-white">{team.availablePlayerCount}</strong></span>
         </span>
         <dl
@@ -192,19 +197,19 @@ function PlayerCard({ auction, announcementEvent }: { auction: PublicAuctionStat
         <div className="rounded-lg bg-slate-950/70 px-4 py-3">
           <p className="text-[0.65rem] font-black uppercase tracking-[0.22em] text-slate-500">{card.basePrice === null ? 'Round 2 opening' : 'Round 1 base price'}</p>
           {card.basePrice === null
-            ? <p className="mt-1 font-black uppercase text-violet-300">No base price <span className="block text-xs font-semibold normal-case text-slate-400">Opening floor ₹1</span></p>
-            : <p className="mt-1 text-2xl font-black text-white">₹{card.basePrice}</p>}
+            ? <p className="mt-1 font-black uppercase text-violet-300">No base price <span className="block text-xs font-semibold normal-case text-slate-400">Opening floor {formatMoney(MINIMUM_LEGAL_MONEY_UNIT)}</span></p>
+            : <p className="mt-1 text-2xl font-black text-white">{formatMoney(card.basePrice)}</p>}
         </div>
         <div className="rounded-lg border border-emerald-500/40 bg-emerald-950/30 px-4 py-3" aria-label="Current bid">
           <p className="text-[0.65rem] font-black uppercase tracking-[0.22em] text-emerald-300">Current Bid</p>
           {card.highestBid === null ? (
             <>
               <p className="mt-1 text-xl font-black text-white">No bid yet</p>
-              <p className="text-xs text-slate-400">{card.basePrice === null ? 'Open from ₹1' : `Opening at ₹${card.basePrice}`}</p>
+              <p className="text-xs text-slate-400">{card.basePrice === null ? `Open from ${formatMoney(MINIMUM_LEGAL_MONEY_UNIT)}` : `Opening at ${formatMoney(card.basePrice)}`}</p>
             </>
           ) : (
             <>
-              <p className="mt-1 text-3xl font-black text-white">₹{card.highestBid}</p>
+              <p className="mt-1 text-3xl font-black text-white">{formatMoney(card.highestBid)}</p>
               <p className="text-xs font-black uppercase tracking-wider text-emerald-300">{teamName(card.highestBidderId)} leading</p>
             </>
           )}
@@ -249,7 +254,7 @@ function BoughtPlayers({ auction, selectedTeamId, onSelectTeam }: {
                 )}
                 <span className="mt-1 block text-[0.62rem] font-bold uppercase tracking-wide text-slate-500">BAT {player.batting} · BOWL {player.bowling} · WK {player.wicketKeeping} · LEAD {player.leadership}{source === 'AUCTION' ? ` · OVR ${player.overall}` : ''}</span>
                 {source === 'EMERGENCY' && <span className="mt-1 block text-[0.65rem] font-black uppercase tracking-wider text-rose-300">Emergency · Overall {player.overall}</span>}
-              </span><span className={`shrink-0 font-black ${source === 'EMERGENCY' ? 'text-rose-300' : 'text-amber-300'}`}>{source === 'EMERGENCY' ? 'FREE' : `₹${pricePaid}`}</span>
+              </span><span className={`shrink-0 font-black ${source === 'EMERGENCY' ? 'text-rose-300' : 'text-amber-300'}`}>{source === 'EMERGENCY' ? 'FREE' : formatMoney(pricePaid)}</span>
             </li>
           ))}
         </ul>
@@ -273,7 +278,7 @@ function AuctionHistory({ auction }: { auction: PublicAuctionState }) {
           {auction.results.map((result, index) => (
             <li className="py-3 text-sm" key={`${result.cardNumber}-${result.player.id}-${index}`}>
               <span className="block font-bold text-white">{result.player.name}</span>
-              {result.outcome === 'SOLD' ? <span className="mt-1 block text-slate-400">{teamName(result.buyerTeamId)} · <strong className="text-emerald-300">{result.price}</strong></span> : <span className="mt-1 block font-black tracking-wider text-rose-300">UNSOLD</span>}
+              {result.outcome === 'SOLD' ? <span className="mt-1 block text-slate-400">{teamName(result.buyerTeamId)} · <strong className="text-emerald-300">{formatMoney(result.price)}</strong></span> : <span className="mt-1 block font-black tracking-wider text-rose-300">UNSOLD</span>}
             </li>
           ))}
         </ol>
@@ -290,7 +295,7 @@ function Controls({ auction, feedback, bid, pass, notInterested }: {
   notInterested: () => void
 }) {
   const card = auction.currentCard
-  const suggestedBid = card?.highestBid === null ? (card.basePrice ?? 1) : (card?.highestBid ?? 0) + 1
+  const suggestedBid = card?.highestBid === null ? (card.basePrice ?? MINIMUM_LEGAL_MONEY_UNIT) : (card?.highestBid ?? 0) + MINIMUM_LEGAL_MONEY_UNIT
   const [amount, setAmount] = useState(String(suggestedBid))
   if (card === null) return null
   const activeParticipant = participantForTeam(auction.participants, card.activeTeamId)
@@ -300,7 +305,7 @@ function Controls({ auction, feedback, bid, pass, notInterested }: {
       <div className="mx-auto flex max-w-[1500px] flex-wrap items-end justify-center gap-4">
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-500" htmlFor="bid-amount">Bid amount · <span>{teamName(card.activeTeamId)}</span></label>
-          <input aria-label="Bid amount" className="mt-1 w-36 rounded border border-slate-600 bg-slate-950 px-3 py-2 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!isHumanTurn} id="bid-amount" inputMode="numeric" onChange={(event) => setAmount(event.target.value)} step="1" type="number" value={amount} />
+          <input aria-label="Bid amount" className="mt-1 w-36 rounded border border-slate-600 bg-slate-950 px-3 py-2 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!isHumanTurn} id="bid-amount" inputMode="numeric" onChange={(event) => setAmount(event.target.value)} step={MINIMUM_LEGAL_MONEY_UNIT} type="number" value={amount} />
         </div>
         <button className="rounded bg-emerald-500 px-6 py-3 font-black text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40" disabled={!isHumanTurn} onClick={() => bid(Number(amount))}>BID</button>
         <button className="rounded bg-amber-500 px-6 py-3 font-black text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40" disabled={!isHumanTurn} onClick={pass}>PASS</button>
@@ -317,20 +322,22 @@ function MatchCard({ result, label, strengths }: {
   label: string
   strengths?: Readonly<Record<TeamId, { readonly overall: number }>>
 }) {
-  const inningsFor = (teamId: TeamId) => result.firstInnings.teamId === teamId
-    ? result.firstInnings
-    : result.secondInnings
-  const teamA = inningsFor(result.teamAId)
-  const teamB = inningsFor(result.teamBId)
   const flavor = strengths ? classifyMatch(result, strengths) : null
+  const inningsBlock = (innings: typeof result.firstInnings) => (
+    <section className="rounded border border-slate-800 bg-slate-900/70 p-3" key={innings.teamId}>
+      <div className="flex items-baseline justify-between gap-3"><h4 className="font-black uppercase text-white">{teamName(innings.teamId)}</h4><strong className="text-xl text-white">{innings.runs}/{innings.wickets}</strong></div>
+      <p className="text-xs text-slate-500">{innings.overs} overs</p>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div><p className="text-[0.65rem] font-black uppercase tracking-wider text-cyan-300">Batting</p>{innings.batting.map((batter) => <p className="mt-1 flex justify-between gap-3 text-sm" key={batter.playerId}><span className="text-slate-300">{batter.playerName}</span><strong>{batter.runs}{batter.notOut ? '*' : ''}</strong></p>)}</div>
+        <div><p className="text-[0.65rem] font-black uppercase tracking-wider text-amber-300">Opposition bowling</p>{innings.bowling.map((bowler) => <p className="mt-1 flex justify-between gap-3 text-sm" key={bowler.playerId}><span className="text-slate-300">{bowler.playerName}</span><strong>{bowler.wickets}/{bowler.runsConceded}</strong></p>)}</div>
+      </div>
+    </section>
+  )
   return (
     <article className="rounded border border-slate-700 bg-slate-950/60 p-4" aria-label={label}>
       <h3 className="font-black text-white">{teamName(result.teamAId)} vs {teamName(result.teamBId)}</h3>
       {flavor && <span className="mt-2 inline-block rounded bg-amber-400/15 px-2 py-1 text-[0.65rem] font-black tracking-[0.16em] text-amber-300">{flavor}</span>}
-      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-        <p><span className="block text-slate-500">{teamName(teamA.teamId)}</span><strong className="text-lg text-white">{teamA.runs}/{teamA.wickets} ({teamA.overs} ov)</strong></p>
-        <p><span className="block text-slate-500">{teamName(teamB.teamId)}</span><strong className="text-lg text-white">{teamB.runs}/{teamB.wickets} ({teamB.overs} ov)</strong></p>
-      </div>
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">{inningsBlock(result.firstInnings)}{inningsBlock(result.secondInnings)}</div>
       <p className="mt-3 border-t border-slate-800 pt-3 text-sm font-bold text-emerald-300">{result.resultText.replace(result.winnerTeamId, teamName(result.winnerTeamId))}</p>
     </article>
   )
@@ -344,21 +351,24 @@ function Tournament({ state }: { state: AuctionHarnessState }) {
     auction.teams.map((team) => [team.teamId, team.strength]),
   ) as Readonly<Record<TeamId, { readonly overall: number }>>
   const currentLeagueMatch = tournament.revealedLeagueMatches.at(-1)!
-  const showingLeague = tournament.stage === 'LEAGUE' || tournament.stage === 'LEAGUE_COMPLETE'
+  const showingMatch = tournament.stage === 'MATCH'
+  const showingStandings = tournament.stage === 'STANDINGS' || tournament.stage === 'LEAGUE_COMPLETE'
   const leagueComplete = tournament.stage === 'LEAGUE_COMPLETE'
   const humanQualified = tournament.finalistTeamIds?.includes('team-a') ?? false
   const gameOver = tournament.stage === 'GAME_OVER'
   return (
     <section className="mb-5 space-y-6 rounded-lg border border-cyan-500/60 bg-cyan-950/40 p-5" aria-labelledby="tournament-title">
-      {showingLeague && <>
+      {showingMatch && <>
         <div>
           <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-400">Match {tournament.revealedLeagueMatches.length} of 6</p>
-          <h2 className="mt-1 text-2xl font-black uppercase tracking-wide text-cyan-200" id="tournament-title">League Matches</h2>
-          <p className="mt-1 text-sm text-slate-400">The tournament is automatic. Reveal each result when you are ready.</p>
+          <h2 className="mt-1 text-2xl font-black uppercase tracking-wide text-cyan-200" id="tournament-title">Match {tournament.revealedLeagueMatches.length} Summary</h2>
           <div className="mt-4" aria-label="Current league match">
             <MatchCard label={`League match ${tournament.revealedLeagueMatches.length}`} result={currentLeagueMatch} strengths={strengths} />
           </div>
         </div>
+        <button className="w-full rounded bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-cyan-300" onClick={state.advanceTournament}>CONTINUE</button>
+      </>}
+      {showingStandings && <>
         <div>
           <h2 className="text-xl font-black uppercase tracking-wide text-white">{leagueComplete ? 'Final League Table' : `Standings after Match ${tournament.revealedLeagueMatches.length}`}</h2>
           <div className="mt-3 overflow-x-auto">
@@ -368,7 +378,7 @@ function Tournament({ state }: { state: AuctionHarnessState }) {
             </table>
           </div>
         </div>
-        {tournament.stage === 'LEAGUE' && <button className="w-full rounded bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-cyan-300" onClick={state.advanceTournament}>NEXT MATCH</button>}
+        {tournament.stage === 'STANDINGS' && <button className="w-full rounded bg-cyan-400 px-5 py-3 font-black text-slate-950 hover:bg-cyan-300" onClick={state.advanceTournament}>NEXT MATCH</button>}
         {leagueComplete && <div className="rounded-lg border border-amber-400/70 bg-amber-950/30 p-5 text-center">
           <p className={`text-2xl font-black ${humanQualified ? 'text-emerald-300' : 'text-rose-300'}`}>{humanQualified ? 'QUALIFIED FOR THE FINAL' : 'KNOCKED OUT'}</p>
           <button className="mt-4 rounded bg-amber-400 px-5 py-3 font-black text-slate-950 hover:bg-amber-300" onClick={state.advanceTournament}>CONTINUE TO FINAL</button>
@@ -499,7 +509,7 @@ export function AuctionHarnessApp({ store = useAuctionHarness }: { store?: Harne
     <main className="min-h-screen bg-slate-950 px-6 py-6 text-slate-100">
       <div className="mx-auto max-w-[1500px]">
         <Header state={state} />
-        {state.stage === 'WELCOME' && <Welcome createGame={state.createGame} />}
+        {state.stage === 'WELCOME' && <Welcome state={state} />}
         {state.stage === 'PRE_AUCTION' && <PreAuction playerCount={state.auctionPlayerCount} startAuction={state.startAuction} />}
         {state.stage === 'AUCTION' && <Auction state={state} />}
         {state.quitConfirmationOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4" role="dialog" aria-modal="true" aria-labelledby="quit-title">

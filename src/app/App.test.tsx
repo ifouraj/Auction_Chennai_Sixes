@@ -5,6 +5,7 @@ import { AI_PRESENTATION_DELAY_MS, AUCTION_RESULT_HOLD_MS } from '../domain/cons
 import { createM2PlayerPool } from '../engine/playerPool'
 import { AuctionHarnessApp } from './App'
 import { createAuctionHarnessStore, TEAM_NAMES } from './auctionStore'
+import { formatMoney } from '../presentation/money'
 
 function renderHarness(seed = 8675309) {
   const store = createAuctionHarnessStore(seed)
@@ -85,7 +86,7 @@ describe('M9 human vs AI auction harness', () => {
     fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
     const controls = screen.getByLabelText('Auction controls')
 
-    expect(screen.getByRole('status')).toHaveTextContent('Team B AI is deciding')
+    expect(screen.getByRole('status')).toHaveTextContent(`${TEAM_NAMES['team-b']} AI is deciding`)
     expect(within(controls).getByRole('spinbutton', { name: 'Bid amount' })).toBeDisabled()
     expect(within(controls).getByRole('button', { name: 'BID' })).toBeDisabled()
     expect(within(controls).getByRole('button', { name: 'PASS' })).toBeDisabled()
@@ -114,12 +115,12 @@ describe('M9 human vs AI auction harness', () => {
     const card = auction.currentCard!
     const centralArea = screen.getByLabelText('Central auction area')
     const currentBid = within(centralArea).getByLabelText('Current bid')
-    const activeSeat = screen.getByLabelText('Team A auction seat')
+    const activeSeat = screen.getByLabelText(`${TEAM_NAMES['team-a']} auction seat`)
 
     expect(activeSeat).toHaveAttribute('data-active', 'true')
     expect(within(activeSeat).getByText('TURN')).toBeInTheDocument()
     expect(currentBid).toHaveTextContent('No bid yet')
-    expect(currentBid).toHaveTextContent(`Opening at ₹${card.basePrice}`)
+    expect(currentBid).toHaveTextContent(`Opening at ${formatMoney(card.basePrice!)}`)
     expect(within(screen.getByLabelText('Auction controls')).queryByText('Current Bid')).not.toBeInTheDocument()
 
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Bid amount' }), {
@@ -127,9 +128,9 @@ describe('M9 human vs AI auction harness', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'BID' }))
 
-    expect(currentBid).toHaveTextContent(`₹${card.basePrice}`)
-    expect(currentBid).toHaveTextContent('Team A leading')
-    expect(screen.getByLabelText('Team B auction seat')).toHaveAttribute('data-active', 'true')
+    expect(currentBid).toHaveTextContent(formatMoney(card.basePrice!))
+    expect(currentBid).toHaveTextContent(`${TEAM_NAMES['team-a']} leading`)
+    expect(screen.getByLabelText(`${TEAM_NAMES['team-b']} auction seat`)).toHaveAttribute('data-active', 'true')
   })
 
   it('keeps a large auction history bounded and pinned while the auction is active', () => {
@@ -177,7 +178,7 @@ describe('M9 human vs AI auction harness', () => {
     expect(store.getState().auction).toMatchObject({ phase: 'ROUND_2', round: 2 })
     const centralArea = screen.getByLabelText('Central auction area')
     expect(within(centralArea).getByText('No base price')).toBeInTheDocument()
-    expect(within(centralArea).getByText('Opening floor ₹1')).toBeInTheDocument()
+    expect(within(centralArea).getByText('Opening floor ₹10L')).toBeInTheDocument()
     expect(within(centralArea).getByLabelText('Current bid')).toHaveTextContent('No bid yet')
     expect(within(centralArea).getByLabelText('Current bid')).toHaveTextContent('Open from ₹1')
     expect(within(centralArea).queryByText(/leading/i)).not.toBeInTheDocument()
@@ -194,7 +195,7 @@ describe('M9 human vs AI auction harness', () => {
     })
 
     expect(screen.getByRole('article', { name: 'League match 1' })).toBeInTheDocument()
-    expect(screen.queryByRole('list', { name: 'Team A purchased players' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: `${TEAM_NAMES['team-a']} purchased players` })).not.toBeInTheDocument()
     expect(screen.queryByText('Bought Players / Squad')).not.toBeInTheDocument()
     expect(screen.queryByText('Best Six — Automatic')).not.toBeInTheDocument()
   })
@@ -272,20 +273,22 @@ describe('M9 human vs AI auction harness', () => {
 
     expect(store.getState().tournament).not.toBeNull()
     expect(store.getState().auction?.teams.every(({ bestSix }) => bestSix.isComplete)).toBe(true)
-    expect(screen.getByRole('heading', { name: 'League Matches' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Match 1 Summary' })).toBeInTheDocument()
     expect(screen.getByRole('article', { name: 'League match 1' })).toBeInTheDocument()
     expect(screen.queryByRole('article', { name: 'League match 2' })).not.toBeInTheDocument()
     expect(store.getState().tournament?.revealedLeagueMatches).toHaveLength(1)
     expect(store.getState().tournament?.finalMatch).toBeNull()
-    expect(screen.getByRole('table', { name: 'League standings' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Standings after Match 1' })).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'League standings' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Final League Table' })).not.toBeInTheDocument()
     for (let match = 2; match <= 6; match += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'CONTINUE' }))
+      expect(screen.getByRole('heading', { name: `Standings after Match ${match - 1}` })).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'NEXT MATCH' }))
       expect(screen.getByRole('article', { name: `League match ${match}` })).toBeInTheDocument()
       expect(screen.getAllByRole('article')).toHaveLength(1)
       expect(store.getState().tournament?.revealedLeagueMatches).toHaveLength(match)
     }
+    fireEvent.click(screen.getByRole('button', { name: 'CONTINUE' }))
     expect(screen.getByRole('heading', { name: 'Final League Table' })).toBeInTheDocument()
     expect(screen.getByText(/QUALIFIED FOR THE FINAL|KNOCKED OUT/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'CONTINUE TO FINAL' }))
@@ -308,7 +311,7 @@ describe('M9 human vs AI auction harness', () => {
     const { store } = createAndStart(202610)
     act(() => {
       while (store.getState().auction?.status === 'IN_PROGRESS') store.getState().tick()
-      for (let step = 0; step < 7; step += 1) store.getState().advanceTournament()
+      for (let step = 0; step < 13; step += 1) store.getState().advanceTournament()
     })
     const complete = store.getState().tournament!
     expect(complete.finalistTeamIds).toContain('team-a')
@@ -341,7 +344,7 @@ describe('M9 human vs AI auction harness', () => {
         ticks += 1
       }
     })
-    for (let step = 0; step < 7; step += 1) act(() => store.getState().advanceTournament())
+    for (let step = 0; step < 13; step += 1) act(() => store.getState().advanceTournament())
     const oldGameId = store.getState().gameId
     fireEvent.click(screen.getByRole('button', { name: 'PLAY AGAIN' }))
     expect(store.getState()).toMatchObject({
@@ -360,7 +363,7 @@ describe('M9 human vs AI auction harness', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
     expect(screen.getAllByLabelText('Live auction announcer')).toHaveLength(1)
-    expect(screen.getByRole('status', { name: 'Live auction announcer' })).toHaveTextContent(/TEAM A PASSES/i)
+    expect(screen.getByRole('status', { name: 'Live auction announcer' })).toHaveTextContent(new RegExp(`${TEAM_NAMES['team-a']} PASSES`, 'i'))
     expect(screen.getByRole('status', { name: 'Live auction announcer' })).not.toHaveTextContent(/NEXT PLAYER/i)
   })
 
@@ -382,7 +385,7 @@ describe('M9 human vs AI auction harness', () => {
     const announcer = screen.getByRole('status', { name: 'Live auction announcer' })
     expect(announcer).toHaveTextContent(result.player.name)
     expect(announcer).toHaveTextContent(`₹${result.price}`)
-    expect(announcer).toHaveTextContent('Team A')
+    expect(announcer).toHaveTextContent(TEAM_NAMES['team-a'])
     expect(store.getState().auction!.currentCard!.player.id).toBe(result.player.id)
 
     const timerBefore = store.getState().auction!.turnTimer!.remainingSeconds
@@ -407,7 +410,7 @@ describe('M9 human vs AI auction harness', () => {
     act(() => {
       while (store.getState().auction?.status === 'IN_PROGRESS') store.getState().tick()
     })
-    for (let step = 0; step < 7; step += 1) act(() => store.getState().advanceTournament())
+    for (let step = 0; step < 13; step += 1) act(() => store.getState().advanceTournament())
     const auction = store.getState().auction!
     const tournament = store.getState().tournament!
     expect(auction.emergencySignings.length).toBeGreaterThan(0)

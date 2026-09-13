@@ -23,6 +23,7 @@ export type BidValidationResult =
         | 'TEAM_NOT_INTERESTED'
         | 'HIGHEST_BIDDER_CANNOT_RAISE_SELF'
         | 'BID_MUST_BE_INTEGER'
+        | 'BID_MUST_USE_LEGAL_INCREMENT'
         | 'BID_BELOW_BASE_PRICE'
         | 'BID_BELOW_MINIMUM_MONEY_UNIT'
         | 'BID_MUST_EXCEED_CURRENT'
@@ -67,7 +68,7 @@ function validateCardBid(
     return { ok: false, reason: 'BID_BELOW_MINIMUM_MONEY_UNIT' }
   }
 
-  if (card.highestBid !== null && amount <= card.highestBid) {
+  if (card.highestBid !== null && amount < card.highestBid + MINIMUM_LEGAL_MONEY_UNIT) {
     return { ok: false, reason: 'BID_MUST_EXCEED_CURRENT' }
   }
 
@@ -95,6 +96,10 @@ export function validateBid(
 
   if (amount > team.balance) {
     return { ok: false, reason: 'BID_EXCEEDS_BALANCE' }
+  }
+
+  if (amount % MINIMUM_LEGAL_MONEY_UNIT !== 0) {
+    return { ok: false, reason: 'BID_MUST_USE_LEGAL_INCREMENT' }
   }
 
   if (

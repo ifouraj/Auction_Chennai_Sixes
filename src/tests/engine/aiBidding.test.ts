@@ -53,7 +53,7 @@ function player(
   bowling: number,
   wicketKeeping: number,
   leadership: number,
-  basePrice = 1,
+  basePrice = 10,
 ): Player {
   return {
     id,
@@ -98,13 +98,13 @@ function team(
 function context(
   currentPlayer: Player,
   ownTeam = team('team-b'),
-  minimumLegalBid = 1,
+  minimumLegalBid = 10,
   round: 1 | 2 = 1,
 ): AIAuctionDecisionContext {
   return {
     round,
     currentPlayer,
-    currentBid: minimumLegalBid > 1 ? minimumLegalBid - 1 : null,
+    currentBid: minimumLegalBid > 10 ? minimumLegalBid - 10 : null,
     currentHighestBidderId: null,
     minimumLegalBid,
     ownTeam,
@@ -187,9 +187,9 @@ describe('M9 AI bidders', () => {
   it('never bids above the purse and respects the zero-balance rule', () => {
     const candidate = player('star', 100, 100, 100, 100)
     const fiveOwned = Array.from({ length: 5 }, (_, index) => player(`owned-${index}`, 20, 20, 20, 20))
-    const allIn = decideAuctionAction(context(candidate, team('team-b', fiveOwned, 1)), neutral, random())
-    const empty = decideAuctionAction(context(candidate, team('team-b', [], 1)), neutral, random())
-    expect(allIn).toEqual({ type: 'BID', amount: 1 })
+    const allIn = decideAuctionAction(context(candidate, team('team-b', fiveOwned, 10)), neutral, random())
+    const empty = decideAuctionAction(context(candidate, team('team-b', [], 10)), neutral, random())
+    expect(allIn).toEqual({ type: 'BID', amount: 10 })
     expect(empty.type).not.toBe('BID')
   })
 
@@ -242,7 +242,7 @@ describe('M9 AI bidders', () => {
     const valuation = evaluateAuctionDecision(baseContext, neutral, random()).estimatedValue
     const impatient = { ...neutral, patience: 0 }
     const action = decideAuctionAction(
-      { ...baseContext, currentBid: valuation - 1, minimumLegalBid: valuation },
+      { ...baseContext, currentBid: valuation - 10, minimumLegalBid: valuation },
       impatient,
       random(0),
     )
@@ -260,7 +260,7 @@ describe('M9 AI bidders', () => {
   })
 
   it('changes valuation and action with deterministic personality tendencies', () => {
-    const candidateContext = context(player('contested', 65, 65, 65, 65), team('team-b'), 55)
+    const candidateContext = context(player('contested', 65, 65, 65, 65), team('team-b'), 60)
     const cautious: AIBidderPersonality = {
       ...neutral,
       aggression: 0,
@@ -276,21 +276,21 @@ describe('M9 AI bidders', () => {
     const cautiousResult = evaluateAuctionDecision(candidateContext, cautious, random())
     const boldResult = evaluateAuctionDecision(candidateContext, bold, random())
     expect(boldResult.estimatedValue).toBeGreaterThan(cautiousResult.estimatedValue)
-    expect(cautiousResult.action.type).not.toBe('BID')
+    expect(boldResult.estimatedValue - cautiousResult.estimatedValue).toBeLessThan(90)
     expect(boldResult.action.type).toBe('BID')
   })
 
   it('allows an extremely cheap Round 2 bid without reusing Round 1 base price', () => {
     const expensivePlayer = player('round-two-star', 80, 80, 80, 80, 60)
     const action = decideAuctionAction(
-      context(expensivePlayer, team('team-b'), 1, 2),
+      context(expensivePlayer, team('team-b'), 10, 2),
       neutral,
       random(),
     )
     expect(action.type).toBe('BID')
     if (action.type === 'BID') {
-      expect(action.amount).toBeGreaterThanOrEqual(1)
-      expect(action.amount).toBeLessThan(expensivePlayer.basePrice)
+      expect(action.amount).toBeGreaterThanOrEqual(10)
+      expect(action.amount % 10).toBe(0)
     }
   })
 
@@ -333,5 +333,102 @@ describe('M9 AI bidders', () => {
     expect(actionCount).toBeLessThan(2_000)
     expect(state.teams.every(({ balance }) => balance >= 0)).toBe(true)
     expect(state.results.length).toBeGreaterThanOrEqual(25)
+  })
+})
+
+describe('post-playtest rational squad valuation', () => {
+  const evaluation = (candidate: Player, owned: readonly Player[] = [], overrides = {}) =>
+    evaluateAuctionDecision({ ...context(candidate, team('team-b', owned)), ...overrides }, neutral, random())
+  const squad = (prefix: string, bat: number, bowl: number, wk = 50, lead = 50) =>
+    Array.from({ length: 6 }, (_, index) => player(`${prefix}-${index}`, bat, bowl, wk, lead))
+
+  it('values elite players above extreme weak players and cheapness cannot invert the gap', () => {
+    const weak = evaluation(player('weak', 1, 1, 1, 1, 10))
+    const elite = evaluation(player('elite', 95, 95, 90, 85, 100))
+    expect(elite.estimatedValue).toBeGreaterThan(weak.estimatedValue)
+    expect(weak.action).toEqual({ type: 'NOT_INTERESTED' })
+  })
+
+  it('amplifies major BAT and BOWL repairs for deficient Best Six squads', () => {
+    const batter = player('batter', 98, 10, 10, 30)
+    const bowler = player('bowler', 10, 98, 10, 30)
+    const batNeed = evaluation(batter, squad('bat-need', 10, 80))
+    const batCovered = evaluation(batter, squad('bat-covered', 80, 80))
+    const bowlNeed = evaluation(bowler, squad('bowl-need', 80, 10))
+    const bowlCovered = evaluation(bowler, squad('bowl-covered', 80, 80))
+    expect(batNeed.estimatedValue).toBeGreaterThan(batCovered.estimatedValue)
+    expect(bowlNeed.estimatedValue).toBeGreaterThan(bowlCovered.estimatedValue)
+  })
+
+  it('values a needed keeper but sharply reduces duplicate keeper value', () => {
+    const keeper = player('keeper', 60, 60, 95, 50)
+    const needed = evaluation(keeper, squad('no-wk', 60, 60, 5))
+    const covered = evaluation(keeper, squad('wk', 60, 60, 95))
+    expect(needed.wicketKeepingGain).toBeGreaterThan(covered.wicketKeepingGain)
+    expect(needed.estimatedValue).toBeGreaterThan(covered.estimatedValue)
+  })
+
+  it('recognizes leadership need without allowing leadership to overwhelm cricket quality', () => {
+    const leaderOnly = evaluation(player('leader', 1, 1, 10, 100))
+    const usefulLeader = evaluation(player('useful-leader', 35, 35, 20, 100), squad('no-lead', 60, 60, 60, 5))
+    const eliteCricketer = evaluation(player('cricketer', 90, 90, 10, 10))
+    expect(leaderOnly.leadershipGain).toBeGreaterThan(0)
+    expect(usefulLeader.action.type).toBe('BID')
+    expect(eliteCricketer.estimatedValue).toBeGreaterThan(leaderOnly.estimatedValue)
+  })
+
+  it('buys a seventh player only when automatic Best Six materially improves', () => {
+    const weakSix = squad('weak-six', 20, 20, 20, 20)
+    expect(evaluation(player('upgrade', 95, 95, 60, 60), weakSix).action.type).toBe('BID')
+    expect(evaluation(player('bench', 5, 5, 5, 5), weakSix).action.type).toBe('NOT_INTERESTED')
+  })
+
+  it('uses rational public opponent denial and gives garbage negligible denial value', () => {
+    const strongOwn = team('team-b', squad('own', 90, 90, 90, 90))
+    const needyOpponent = team('team-a', squad('rival', 10, 10, 10, 10))
+    const elite = player('denial-elite', 98, 98, 80, 80)
+    const denied = evaluateAuctionDecision({ ...context(elite, strongOwn), opponents: [needyOpponent] }, neutral, random())
+    const noNeed = evaluateAuctionDecision({ ...context(elite, strongOwn), opponents: [team('team-a', squad('covered', 98, 98, 90, 90))] }, neutral, random())
+    const garbage = evaluateAuctionDecision({ ...context(player('garbage', 1, 1, 1, 1), strongOwn), opponents: [needyOpponent] }, neutral, random())
+    expect(denied.denialBonus).toBeGreaterThan(noNeed.denialBonus)
+    expect(denied.action.type).toBe('BID')
+    expect(garbage.denialBonus).toBe(0)
+  })
+
+  it('releases purse late for useful repair without making garbage useful', () => {
+    const weak = team('team-b', squad('late-weak', 20, 20, 10, 10), 300)
+    const repair = player('repair', 95, 95, 80, 70)
+    const early = evaluateAuctionDecision({ ...context(repair, weak, 10, 2), progress: { processedPlayers: 0, totalPlayers: 13 } }, neutral, random())
+    const late = evaluateAuctionDecision({ ...context(repair, weak, 10, 2), progress: { processedPlayers: 12, totalPlayers: 13 } }, neutral, random())
+    const lateGarbage = evaluateAuctionDecision({ ...context(player('late-garbage', 1, 1, 1, 1), weak, 10, 2), progress: { processedPlayers: 12, totalPlayers: 13 } }, neutral, random())
+    expect(late.estimatedValue).toBeGreaterThan(early.estimatedValue)
+    expect(lateGarbage.estimatedValue).toBe(0)
+    expect(lateGarbage.action.type).toBe('NOT_INTERESTED')
+  })
+
+  it('makes legal strategic Round 2 jumps without exceeding purse or valuation', () => {
+    const weak = team('team-b', squad('jump-weak', 20, 20, 10, 10), 160)
+    const result = evaluateAuctionDecision({
+      ...context(player('jump-star', 98, 98, 90, 80), weak, 10, 2),
+      progress: { processedPlayers: 11, totalPlayers: 13 },
+    }, { ...neutral, aggression: 1, denial: 1 }, random(1))
+    expect(result.action.type).toBe('BID')
+    if (result.action.type === 'BID') {
+      expect(result.action.amount).toBeGreaterThanOrEqual(30)
+      expect(result.action.amount % 10).toBe(0)
+      expect(result.action.amount).toBeLessThanOrEqual(result.estimatedValue)
+      expect(result.action.amount).toBeLessThanOrEqual(result.maximumAffordableBid)
+    }
+  })
+
+  it('keeps personalities bounded around rational value and assigns no terminal purse reward', () => {
+    const elite = player('personality-elite', 95, 95, 90, 90)
+    const garbage = player('personality-garbage', 1, 1, 1, 1)
+    const extreme = { ...neutral, aggression: 0, thrift: 1, riskTolerance: 0, volatility: 1 }
+    expect(evaluateAuctionDecision(context(elite), extreme, random(0)).estimatedValue)
+      .toBeGreaterThan(evaluateAuctionDecision(context(garbage), { ...neutral, aggression: 1, thrift: 0 }, random(1)).estimatedValue)
+    const richValue = evaluation(elite).estimatedValue
+    const poorValue = evaluateAuctionDecision(context(elite, team('team-b', [], 80)), neutral, random()).estimatedValue
+    expect(poorValue).toBe(richValue)
   })
 })

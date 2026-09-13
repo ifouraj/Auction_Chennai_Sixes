@@ -86,7 +86,7 @@ describe('auction turn timer', () => {
     let state = placeBid(initial, 'team-a', price)
     state = advanceTurnTimer(state, AUCTION_TURN_SECONDS)
     state = advanceTurnTimer(state, AUCTION_TURN_SECONDS)
-    state = placeBid(state, 'team-d', price + 1)
+    state = placeBid(state, 'team-d', price + 10)
 
     expect(state.currentCard).toMatchObject({
       highestBidderId: 'team-d',

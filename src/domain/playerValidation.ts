@@ -1,4 +1,5 @@
 import {
+  MINIMUM_LEGAL_MONEY_UNIT,
   MINIMUM_PUNISHMENT_PLAYER_CATALOG_SIZE,
   NORMAL_PLAYER_CATALOG_SIZE,
 } from './constants'
@@ -52,7 +53,8 @@ export function assertValidNormalPlayerCatalog(
       }
     }
 
-    if (!Number.isInteger(player.basePrice) || player.basePrice < 0) {
+    if (!Number.isInteger(player.basePrice) || player.basePrice < 0 ||
+      player.basePrice % MINIMUM_LEGAL_MONEY_UNIT !== 0) {
       throw new Error(`Player ${player.id} has an invalid base price`)
     }
 

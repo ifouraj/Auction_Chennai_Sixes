@@ -44,7 +44,7 @@ function ratedPlayer(
     wicketKeeping,
     leadership,
     overall: 0,
-    basePrice: 1,
+    basePrice: 10,
     kind: 'NORMAL',
   }
 }
@@ -127,7 +127,7 @@ describe('Round 1 auction engine', () => {
       ok: false,
       reason: 'BID_MUST_EXCEED_CURRENT',
     })
-    expect(validateBid(afterOpening, 'team-b', basePrice + 1)).toEqual({
+    expect(validateBid(afterOpening, 'team-b', basePrice + 10)).toEqual({
       ok: true,
     })
   })
@@ -148,7 +148,7 @@ describe('Round 1 auction engine', () => {
     const afterCPass = passTurn(afterBBid, 'team-c')
     const afterDPass = passTurn(afterCPass, 'team-d')
     expect(afterDPass.currentCard!.activeTeamId).toBe('team-a')
-    expect(validateBid(afterDPass, 'team-a', basePrice + 1)).toEqual({ ok: true })
+    expect(validateBid(afterDPass, 'team-a', basePrice + 10)).toEqual({ ok: true })
   })
 
   it('permanently excludes NOT_INTERESTED participants for the card', () => {
@@ -214,7 +214,7 @@ describe('Round 1 auction engine', () => {
 
   it('records the sold price as the existing highest bid', () => {
     const initial = createAuction()
-    const price = initial.currentCard!.player.basePrice + 37
+    const price = initial.currentCard!.player.basePrice + 40
     let state = placeBid(initial, 'team-a', price)
     state = passTurn(state, 'team-b')
     state = passTurn(state, 'team-c')

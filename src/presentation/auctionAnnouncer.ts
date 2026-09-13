@@ -1,6 +1,8 @@
 import type { ParticipantKind, Player, TeamId } from '../domain/types'
 import type { PublicAuctionState } from '../engine/auctionEngine'
 import { auctionFlavorLine, classifyAuctionSale } from './auctionFlavor'
+import { MINIMUM_LEGAL_MONEY_UNIT } from '../domain/constants'
+import { formatMoney } from './money'
 
 export type AuctionAnnouncementTone =
   | 'reveal'
@@ -57,7 +59,7 @@ function nextTurnLine(turn: TurnContext | null, name: TeamNameFormatter): string
   if (turn.participantKind === 'HUMAN_LOCAL') {
     return turn.currentBid === null
       ? 'Your turn — bid, pass or leave the auction'
-      : `Your turn — current bid ₹${turn.currentBid}`
+      : `Your turn — current bid ${formatMoney(turn.currentBid)}`
   }
   return `${name(turn.teamId)} AI is deciding…`
 }
@@ -70,16 +72,16 @@ export function announceAuctionEvent(
     case 'PLAYER_REVEAL':
       return {
         primary: `NEXT PLAYER — ${event.player.name.toUpperCase()}`,
-        secondary: `${event.round === 1 ? `Base price ₹${event.player.basePrice}` : 'Round 2 opening ₹1'} · ${nextTurnLine(event.turn, name)}`,
+        secondary: `${event.round === 1 ? `Base price ${formatMoney(event.player.basePrice)}` : `Round 2 opening ${formatMoney(MINIMUM_LEGAL_MONEY_UNIT)}`} · ${nextTurnLine(event.turn, name)}`,
         tone: 'reveal', emphasizedTeamId: event.turn.teamId,
       }
     case 'TURN':
       return event.turn.participantKind === 'HUMAN_LOCAL'
-        ? { primary: 'YOUR TURN', secondary: event.turn.currentBid === null ? 'Bid, pass or leave the auction' : `Current bid ₹${event.turn.currentBid} — bid, pass or leave the auction`, tone: 'turn', emphasizedTeamId: event.turn.teamId }
+        ? { primary: 'YOUR TURN', secondary: event.turn.currentBid === null ? 'Bid, pass or leave the auction' : `Current bid ${formatMoney(event.turn.currentBid)} — bid, pass or leave the auction`, tone: 'turn', emphasizedTeamId: event.turn.teamId }
         : { primary: `${name(event.turn.teamId).toUpperCase()}'S TURN`, secondary: 'AI is deciding…', tone: 'turn', emphasizedTeamId: event.turn.teamId }
     case 'BID': {
-      const jump = event.previousBid !== null && event.amount - event.previousBid >= 25
-      return { primary: `${name(event.teamId).toUpperCase()} ${jump ? 'JUMPS TO' : 'BIDS'} ₹${event.amount}`, secondary: `${name(event.teamId)} now leads · ${nextTurnLine(event.turn, name)}`, tone: 'bid', emphasizedTeamId: event.teamId }
+      const jump = event.previousBid !== null && event.amount - event.previousBid >= 30
+      return { primary: `${name(event.teamId).toUpperCase()} ${jump ? 'JUMPS TO' : 'BIDS'} ${formatMoney(event.amount)}`, secondary: `${name(event.teamId)} now leads · ${nextTurnLine(event.turn, name)}`, tone: 'bid', emphasizedTeamId: event.teamId }
     }
     case 'PASS':
       return { primary: `${name(event.teamId).toUpperCase()} ${event.timedOut ? 'TIMES OUT' : 'PASSES'}`, secondary: `They can return if bidding continues${event.turn ? ` · ${nextTurnLine(event.turn, name)}` : ''}`, tone: 'pass', emphasizedTeamId: event.teamId }
@@ -93,14 +95,14 @@ export function announceAuctionEvent(
         distinctBidderCount: event.distinctBidderCount,
       })
       const flavorLine = auctionFlavorLine(flavor)
-      return { primary: 'SOLD!', secondary: `${event.player.name} → ${name(event.buyerTeamId)} for ₹${event.price}${flavorLine ? ` · ${flavorLine}` : ''}`, tone: 'sold', emphasizedTeamId: event.buyerTeamId }
+      return { primary: 'SOLD!', secondary: `${event.player.name} → ${name(event.buyerTeamId)} for ${formatMoney(event.price)}${flavorLine ? ` · ${flavorLine}` : ''}`, tone: 'sold', emphasizedTeamId: event.buyerTeamId }
     }
     case 'UNSOLD':
       return { primary: 'UNSOLD', secondary: `${event.player.name} — nobody made a valid bid${event.round === 1 ? ' · Returns in Round 2' : ''}`, tone: 'unsold', emphasizedTeamId: null }
     case 'NEXT_PLAYER':
-      return { primary: 'NEXT PLAYER', secondary: `${event.player.name} enters the auction — ${event.round === 1 ? `base ₹${event.player.basePrice}` : 'opening ₹1'} · ${nextTurnLine(event.turn, name)}`, tone: 'transition', emphasizedTeamId: event.turn.teamId }
+      return { primary: 'NEXT PLAYER', secondary: `${event.player.name} enters the auction — ${event.round === 1 ? `base ${formatMoney(event.player.basePrice)}` : `opening ${formatMoney(MINIMUM_LEGAL_MONEY_UNIT)}`} · ${nextTurnLine(event.turn, name)}`, tone: 'transition', emphasizedTeamId: event.turn.teamId }
     case 'ROUND_2':
-      return { primary: 'ROUND 2', secondary: `Unsold players return. Opening bid ₹1. · ${event.player.name} is first back`, tone: 'transition', emphasizedTeamId: event.turn.teamId }
+      return { primary: 'ROUND 2', secondary: `Unsold players return. Opening bid ${formatMoney(MINIMUM_LEGAL_MONEY_UNIT)}. · ${event.player.name} is first back`, tone: 'transition', emphasizedTeamId: event.turn.teamId }
     case 'AUCTION_COMPLETE':
       return { primary: 'AUCTION COMPLETE', secondary: 'The squads are locked.', tone: 'complete', emphasizedTeamId: null }
   }
