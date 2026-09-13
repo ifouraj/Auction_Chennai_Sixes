@@ -67,10 +67,10 @@ describe('M7 team strength', () => {
   })
 
   it.each([
-    ['one player and two missing BOWL slots', [90], 30],
-    ['two players and one missing BOWL slot', [90, 60], 50],
-    ['three-player BOWL average', [90, 60, 30], 60],
-    ['best three BOWL from more than three players', [10, 90, 30, 80, 70], 80],
+    ['one player and four missing BOWL slots', [90], 18],
+    ['two players and three missing BOWL slots', [90, 60], 30],
+    ['five-player BOWL average', [90, 60, 30, 20, 10], 42],
+    ['best five BOWL from more than five players', [10, 90, 30, 80, 70, 60, 2], 66],
   ])('%s', (_name, bowlingRatings, expected) => {
     const input = purchases(bowlingRatings.map((value) => [0, value]))
     expect(calculateTeamStrength(input).bowling).toBe(expected)
@@ -87,7 +87,7 @@ describe('M7 team strength', () => {
     expect(strength.leadership).toBe(91)
   })
 
-  it('equally averages the exact four categories before public rounding', () => {
+  it('uses the harmonic BAT/BOWL core and 94/3/3 weighting before public rounding', () => {
     const strength = calculateTeamStrength(purchases([
       [80, 90, 70, 60],
       [80, 60],
@@ -98,26 +98,37 @@ describe('M7 team strength', () => {
 
     expect(strength).toEqual({
       batting: 80,
-      bowling: 60,
+      bowling: 36,
       wicketKeeping: 70,
       leadership: 60,
-      overall: 68,
+      overall: 51,
     })
   })
 
   it('uses nearest-integer rounding, rounds .5 upward, and avoids compounded rounding', () => {
-    const exactHalf = calculateTeamStrength(purchases([[10]]))
-    expect(exactHalf.overall).toBe(1) // (BAT 2 + 0 + 0 + 0) / 4 = 0.5
+    const exactHalf = calculateTeamStrength(purchases([[10, 10, 50, 50]]))
+    expect(exactHalf.overall).toBe(5) // core 2 plus the two 3% modifiers
 
     const noCompounding = calculateTeamStrength(purchases([
       [2, 1, 0, 0],
       [2, 1],
     ]))
     expect(noCompounding.batting).toBe(1)
-    expect(noCompounding.bowling).toBe(1)
-    // Exact average is (0.8 + 2/3) / 4 = 0.366..., while averaging the
-    // already-rounded categories would incorrectly produce 0.5 and round to 1.
-    expect(noCompounding.overall).toBe(0)
+    expect(noCompounding.bowling).toBe(0)
+    // Exact BAT 0.8 and BOWL 0.4 produce a harmonic core of 0.533...;
+    // Overall is calculated from exact categories rather than rounded display.
+    expect(noCompounding.overall).toBe(1)
+  })
+
+  it('penalizes severe imbalance and prevents WK/LEAD from dominating', () => {
+    const balanced = calculateTeamStrength(purchases(Array(5).fill([70, 70, 20, 20])))
+    const unbalanced = calculateTeamStrength(purchases(Array(5).fill([96, 12, 100, 100])))
+    const modifiersOnly = calculateTeamStrength(purchases(Array(5).fill([0, 0, 100, 100])))
+
+    expect(balanced.overall).toBe(67)
+    expect(unbalanced.overall).toBe(26)
+    expect(modifiersOnly.overall).toBe(6)
+    expect(balanced.overall).toBeGreaterThan(unbalanced.overall)
   })
 
   it('does not mutate purchase or player arrays while selecting top ratings', () => {

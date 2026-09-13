@@ -21,10 +21,13 @@ import {
 } from '../engine/auctionEngine'
 import { createM2PlayerPool } from '../engine/playerPool'
 import {
+  calculateLeagueStandings,
   simulateTournament,
+  type LeagueStanding,
   type TournamentResult,
   type TournamentTeamInput,
 } from '../engine/tournamentEngine'
+import type { MatchResult } from '../engine/matchSimulator'
 import {
   eventAfterPublicAction,
   eventAfterResultHold,
@@ -59,14 +62,26 @@ export const TEAM_NAMES: Readonly<Record<TeamId, string>> = {
 }
 
 export type HarnessStage = 'WELCOME' | 'PRE_AUCTION' | 'AUCTION'
+export type TournamentStage = 'LEAGUE' | 'LEAGUE_COMPLETE' | 'FINAL_READY' | 'GAME_OVER'
+
+export interface PublicTournamentProgress {
+  readonly tournamentId: string
+  readonly stage: TournamentStage
+  readonly revealedLeagueMatches: readonly MatchResult[]
+  readonly standings: readonly LeagueStanding[]
+  readonly finalistTeamIds: readonly [TeamId, TeamId] | null
+  readonly finalMatch: MatchResult | null
+  readonly championTeamId: TeamId | null
+  readonly runnerUpTeamId: TeamId | null
+}
 
 export interface AuctionHarnessState {
   readonly stage: HarnessStage
-  readonly selectedPool: readonly Player[]
+  readonly auctionPlayerCount: number
   readonly auction: PublicAuctionState | null
   readonly lastResult: AuctionCardResult | null
   readonly lastAiDecision: AIDecisionEvaluation | null
-  readonly tournament: TournamentResult | null
+  readonly tournament: PublicTournamentProgress | null
   readonly feedback: string | null
   readonly announcementEvent: AuctionPresentationEvent | null
   readonly announcementId: number
@@ -80,6 +95,12 @@ export interface AuctionHarnessState {
   actForAI: (expectedTurn: AITurnIdentity) => void
   tick: () => void
   advanceAnnouncement: (expectedAnnouncementId: number) => void
+  advanceTournament: () => void
+  readonly quitConfirmationOpen: boolean
+  requestQuit: () => void
+  cancelQuit: () => void
+  confirmQuit: () => void
+  mainMenu: () => void
 }
 
 const errorMessages: Readonly<Record<string, string>> = {
@@ -122,11 +143,39 @@ export function createAuctionHarnessStore(
   let gameId = 0
   let currentGameSeed = initialSeed ?? 0
   let announcementId = 0
+  let fullTournament: TournamentResult | null = null
+  let tournamentTeams: readonly TournamentTeamInput[] = []
+  let heldResultPlayer: Player | null = null
 
-  const tournamentFromAuction = (): TournamentResult | null => {
+  const auctionForPresentation = (state: PublicAuctionState): PublicAuctionState =>
+    heldResultPlayer === null || state.currentCard === null
+      ? state
+      : { ...state, currentCard: { ...state.currentCard, player: heldResultPlayer } }
+
+  const publicTournament = (
+    stage: TournamentStage,
+    revealedCount: number,
+  ): PublicTournamentProgress | null => {
+    if (fullTournament === null) return null
+    const revealedLeagueMatches = fullTournament.leagueMatches.slice(0, revealedCount)
+    const leagueComplete = revealedCount === fullTournament.leagueMatches.length
+    return {
+      tournamentId: fullTournament.tournamentId,
+      stage,
+      revealedLeagueMatches,
+      standings: calculateLeagueStandings(tournamentTeams, revealedLeagueMatches),
+      finalistTeamIds: leagueComplete ? fullTournament.finalistTeamIds : null,
+      finalMatch: stage === 'GAME_OVER' ? fullTournament.finalMatch : null,
+      championTeamId: stage === 'GAME_OVER' ? fullTournament.championTeamId : null,
+      runnerUpTeamId: stage === 'GAME_OVER' ? fullTournament.runnerUpTeamId : null,
+    }
+  }
+
+  const tournamentFromAuction = (): PublicTournamentProgress | null => {
     if (engineState?.status !== 'COMPLETE') return null
+    if (fullTournament !== null) return publicTournament('LEAGUE', 1)
     const publicState = getPublicAuctionState(engineState)
-    const teams = publicState.teams.map((team): TournamentTeamInput => {
+    tournamentTeams = publicState.teams.map((team): TournamentTeamInput => {
       const participant = publicState.participants.find(
         (candidate) => candidate.teamId === team.teamId,
       )
@@ -140,7 +189,8 @@ export function createAuctionHarnessStore(
       ].filter(({ id }) => selectedIds.has(id))
       return { teamId: team.teamId, seatIndex: participant.seatIndex, bestSix }
     })
-    return simulateTournament(teams, currentGameSeed)
+    fullTournament = simulateTournament(tournamentTeams, currentGameSeed)
+    return publicTournament('LEAGUE', 1)
   }
 
   return create<AuctionHarnessState>((set) => {
@@ -161,15 +211,18 @@ export function createAuctionHarnessStore(
         engineState = command(before, activeTeamId)
         const afterPublic = getPublicAuctionState(engineState)
         announcementId += 1
-        set({
-          auction: afterPublic,
-          lastResult: resultAfterAction(before, engineState),
-          announcementEvent: eventAfterPublicAction(
+        const result = resultAfterAction(before, engineState)
+        const event = eventAfterPublicAction(
             beforePublic,
             afterPublic,
             action,
             activeTeamId,
-          ),
+          )
+        heldResultPlayer = result?.player ?? null
+        set({
+          auction: auctionForPresentation(afterPublic),
+          lastResult: result,
+          announcementEvent: event,
           announcementId,
           tournament: tournamentFromAuction(),
           feedback: null,
@@ -181,7 +234,7 @@ export function createAuctionHarnessStore(
 
     return {
       stage: 'WELCOME',
-      selectedPool: [],
+      auctionPlayerCount: 25,
       auction: null,
       lastResult: null,
       lastAiDecision: null,
@@ -191,15 +244,19 @@ export function createAuctionHarnessStore(
       announcementId,
       publicAiPersonalities: {},
       gameId,
+      quitConfirmationOpen: false,
       createGame: (seed = initialSeed ?? Date.now()) => {
         gameId += 1
         currentGameSeed = seed
         pendingPool = createM2PlayerPool(seed)
         engineState = null
+        fullTournament = null
+        tournamentTeams = []
+        heldResultPlayer = null
         decisionRandom = createAIDecisionRandom(seed)
         set({
           stage: 'PRE_AUCTION',
-          selectedPool: pendingPool.selectedPool,
+          auctionPlayerCount: pendingPool.selectedPool.length,
           auction: null,
           lastResult: null,
           lastAiDecision: null,
@@ -209,6 +266,7 @@ export function createAuctionHarnessStore(
           announcementId,
           publicAiPersonalities: {},
           gameId,
+          quitConfirmationOpen: false,
         })
       },
       startAuction: () => {
@@ -280,16 +338,19 @@ export function createAuctionHarnessStore(
           const beforePublic = getPublicAuctionState(before)
           const afterPublic = getPublicAuctionState(engineState)
           announcementId += 1
-          set({
-            auction: afterPublic,
-            lastResult: resultAfterAction(before, engineState),
-            lastAiDecision: evaluation,
-            announcementEvent: eventAfterPublicAction(
+          const result = resultAfterAction(before, engineState)
+          const event = eventAfterPublicAction(
               beforePublic,
               afterPublic,
               evaluation.action.type,
               expectedTurn.teamId,
-            ),
+            )
+          heldResultPlayer = result?.player ?? null
+          set({
+            auction: auctionForPresentation(afterPublic),
+            lastResult: result,
+            lastAiDecision: evaluation,
+            announcementEvent: event,
             announcementId,
             tournament: tournamentFromAuction(),
             feedback: null,
@@ -307,8 +368,9 @@ export function createAuctionHarnessStore(
           const afterPublic = getPublicAuctionState(engineState)
           const timedOut = before.turnTimer?.remainingSeconds === 1
           if (timedOut) announcementId += 1
+          if (timerResult !== null) heldResultPlayer = timerResult.player
           set({
-            auction: afterPublic,
+            auction: auctionForPresentation(afterPublic),
             ...(timerResult === null ? {} : { lastResult: timerResult }),
             ...(timedOut ? {
               announcementEvent: eventAfterPublicAction(
@@ -330,9 +392,70 @@ export function createAuctionHarnessStore(
           expectedAnnouncementId !== announcementId
         ) return
         announcementId += 1
+        heldResultPlayer = null
         set({
+          auction: getPublicAuctionState(engineState),
           announcementEvent: eventAfterResultHold(getPublicAuctionState(engineState)),
           announcementId,
+        })
+      },
+      advanceTournament: () => set((state) => {
+        const tournament = state.tournament
+        if (tournament === null || fullTournament === null) return state
+        const revealedCount = tournament.revealedLeagueMatches.length
+        if (tournament.stage === 'LEAGUE') {
+          const nextCount = Math.min(fullTournament.leagueMatches.length, revealedCount + 1)
+          return {
+            tournament: publicTournament(
+              nextCount === fullTournament.leagueMatches.length ? 'LEAGUE_COMPLETE' : 'LEAGUE',
+              nextCount,
+            ),
+          }
+        }
+        if (tournament.stage === 'LEAGUE_COMPLETE') {
+          return { tournament: publicTournament('FINAL_READY', revealedCount) }
+        }
+        if (tournament.stage === 'FINAL_READY') {
+          return { tournament: publicTournament('GAME_OVER', revealedCount) }
+        }
+        return state
+      }),
+      requestQuit: () => set((state) => state.stage === 'WELCOME'
+        || state.tournament?.stage === 'GAME_OVER'
+        ? state
+        : { quitConfirmationOpen: true }),
+      cancelQuit: () => set({ quitConfirmationOpen: false }),
+      confirmQuit: () => {
+        gameId += 1
+        pendingPool = null
+        engineState = null
+        fullTournament = null
+        tournamentTeams = []
+        heldResultPlayer = null
+        set({
+          stage: 'WELCOME',
+          auction: null,
+          lastResult: null,
+          lastAiDecision: null,
+          tournament: null,
+          feedback: null,
+          announcementEvent: null,
+          publicAiPersonalities: {},
+          gameId,
+          quitConfirmationOpen: false,
+        })
+      },
+      mainMenu: () => {
+        gameId += 1
+        pendingPool = null
+        engineState = null
+        fullTournament = null
+        tournamentTeams = []
+        heldResultPlayer = null
+        set({
+          stage: 'WELCOME', auction: null, tournament: null,
+          announcementEvent: null, publicAiPersonalities: {}, gameId,
+          quitConfirmationOpen: false,
         })
       },
     }

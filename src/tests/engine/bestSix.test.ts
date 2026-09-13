@@ -80,13 +80,13 @@ describe('M8 automatic Best Six', () => {
     expect(calculateBestSix(uniformPlayers(count)).playerIds).toHaveLength(6)
   })
 
-  it('chooses by exact M7 Overall before public integer rounding', () => {
+  it('chooses by exact weighted Overall before public integer rounding', () => {
     const anchors = Array.from({ length: 4 }, (_, index) =>
       purchase(player(`anchor-${index}`, 80, 80, 80, 80)),
     )
     const keeper = purchase(player('keeper', 0, 0, 100, 0))
     const lower = purchase(player('option-lower', 10, 0, 0, 0))
-    const higher = purchase(player('option-higher', 11, 0, 0, 0))
+    const higher = purchase(player('option-higher', 10.1, 0, 0, 0))
     const lowerSix = [...anchors, keeper, lower]
     const higherSix = [...anchors, keeper, higher]
 

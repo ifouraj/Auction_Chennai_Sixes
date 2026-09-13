@@ -240,17 +240,17 @@ describe('Round 1 auction engine', () => {
     expect(team.strength).toEqual(calculateTeamStrength(team.purchasedPlayers))
     expect(team.strength).toEqual({
       batting: Math.round(player.batting / 5),
-      bowling: Math.round(player.bowling / 3),
+      bowling: Math.round(player.bowling / 5),
       wicketKeeping: player.wicketKeeping,
       leadership: player.leadership,
-      overall: Math.round(
-        (player.batting / 5 +
-          player.bowling / 3 +
-          player.wicketKeeping +
-          player.leadership) /
-          4,
-      ),
+      overall: calculateTeamStrength([{ player }]).overall,
     })
+  })
+
+  it('never exposes the selected pool or future queue in public state', () => {
+    const publicState = getPublicAuctionState(createAuction())
+    expect(publicState).not.toHaveProperty('selectedPool')
+    expect(publicState).not.toHaveProperty('privateAuctionQueue')
   })
 
   it('recomputes public Best Six immediately after a new SOLD player', () => {

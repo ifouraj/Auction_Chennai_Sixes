@@ -97,6 +97,46 @@ function compareStanding(
     || left.teamId.localeCompare(right.teamId)
 }
 
+/** Builds the public table after any revealed prefix of the six league games. */
+export function calculateLeagueStandings(
+  teams: readonly TournamentTeamInput[],
+  leagueMatches: readonly MatchResult[],
+): readonly LeagueStanding[] {
+  assertTournamentTeams(teams)
+  const participants = orderedTeams(teams)
+  const participantIds = new Set(participants.map(({ teamId }) => teamId))
+  if (leagueMatches.some(({ teamAId, teamBId }) =>
+    !participantIds.has(teamAId) || !participantIds.has(teamBId),
+  )) throw new Error('League result contains an unknown tournament team')
+
+  const table = participants.map((team) => {
+    const matches = leagueMatches.filter((match) =>
+      match.teamAId === team.teamId || match.teamBId === team.teamId,
+    )
+    const won = matches.filter(({ winnerTeamId }) => winnerTeamId === team.teamId).length
+    return {
+      position: 0,
+      teamId: team.teamId,
+      played: matches.length,
+      won,
+      lost: matches.length - won,
+      points: won * 2,
+      strength: calculateTeamStrength(team.bestSix.map((player) => ({ player }))),
+      seatIndex: team.seatIndex,
+    }
+  }).sort(compareStanding)
+
+  return table.map((standing, index) => ({
+    position: index + 1,
+    teamId: standing.teamId,
+    played: standing.played,
+    won: standing.won,
+    lost: standing.lost,
+    points: standing.points,
+    strength: standing.strength,
+  }))
+}
+
 function tournamentIdentifier(seed: number, teams: readonly TournamentTeamInput[]): string {
   const identity = orderedTeams(teams).map((team) => [
     team.teamId,
@@ -136,31 +176,7 @@ export function simulateTournament(
     }
   }
 
-  const table = participants.map((team) => {
-    const matches = leagueMatches.filter((match) =>
-      match.teamAId === team.teamId || match.teamBId === team.teamId,
-    )
-    const won = matches.filter(({ winnerTeamId }) => winnerTeamId === team.teamId).length
-    return {
-      position: 0,
-      teamId: team.teamId,
-      played: matches.length,
-      won,
-      lost: matches.length - won,
-      points: won * 2,
-      strength: calculateTeamStrength(team.bestSix.map((player) => ({ player }))),
-      seatIndex: team.seatIndex,
-    }
-  }).sort(compareStanding)
-  const standings: LeagueStanding[] = table.map((standing, index) => ({
-    position: index + 1,
-    teamId: standing.teamId,
-    played: standing.played,
-    won: standing.won,
-    lost: standing.lost,
-    points: standing.points,
-    strength: standing.strength,
-  }))
+  const standings = calculateLeagueStandings(participants, leagueMatches)
 
   const finalistTeamIds = [standings[0].teamId, standings[1].teamId] as const
   const finalistA = participants.find(({ teamId }) => teamId === finalistTeamIds[0])!

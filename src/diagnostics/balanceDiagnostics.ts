@@ -107,9 +107,13 @@ export interface BalanceDiagnosticReport {
   readonly matches: number
   readonly matchBenchmarks: {
     readonly equal: { readonly games: number; readonly strongerWinRate: number }
+    readonly modest: { readonly games: number; readonly strongerWinRate: number }
     readonly clear: { readonly games: number; readonly strongerWinRate: number }
     readonly extreme: { readonly games: number; readonly strongerWinRate: number }
   }
+  readonly strongestTeamChampionshipRate: number
+  readonly weakestTeamChampionshipRate: number
+  readonly emergencySigningFrequency: number
   readonly auctionsWithEmergencyPlayers: number
   readonly teamsReceivingEmergencyPlayers: number
   readonly totalEmergencyPlayers: number
@@ -367,6 +371,7 @@ function benchmarkWinRate(
 
 function runMatchBenchmarks(): BalanceDiagnosticReport['matchBenchmarks'] {
   const equalGames = 2_000
+  const modestGames = 2_000
   const clearGames = 2_000
   const extremeGames = 3_000
   return {
@@ -376,10 +381,16 @@ function runMatchBenchmarks(): BalanceDiagnosticReport['matchBenchmarks'] {
         benchmarkTeam('equal-a', 50), benchmarkTeam('equal-b', 50), equalGames,
       ),
     },
+    modest: {
+      games: modestGames,
+      strongerWinRate: benchmarkWinRate(
+        benchmarkTeam('modest-strong', 60), benchmarkTeam('modest-average', 50), modestGames,
+      ),
+    },
     clear: {
       games: clearGames,
       strongerWinRate: benchmarkWinRate(
-        benchmarkTeam('clear-strong', 80), benchmarkTeam('clear-average', 50), clearGames,
+        benchmarkTeam('clear-strong', 75), benchmarkTeam('clear-average', 50), clearGames,
       ),
     },
     extreme: {
@@ -445,6 +456,11 @@ export function runBalanceDiagnostics(seedStart: number, seedEnd: number): Balan
     tournaments: games.length,
     matches: games.length * 7,
     matchBenchmarks: runMatchBenchmarks(),
+    strongestTeamChampionshipRate: championshipsByStrengthRank[0] / games.length,
+    weakestTeamChampionshipRate: championshipsByStrengthRank[3] / games.length,
+    emergencySigningFrequency: games.filter(({ teams: gameTeams }) =>
+      gameTeams.some(({ emergencyPlayers }) => emergencyPlayers > 0),
+    ).length / games.length,
     auctionsWithEmergencyPlayers: games.filter(({ teams: gameTeams }) =>
       gameTeams.some(({ emergencyPlayers }) => emergencyPlayers > 0),
     ).length,

@@ -154,6 +154,18 @@ describe('M15 deterministic balance diagnostics', () => {
     expect(strongRate).toBeLessThan(1)
   })
 
+  it('reports deterministic equal, modest, clear, and extreme matchup bands', () => {
+    const benchmarks = runBalanceDiagnostics(1801, 1810).matchBenchmarks
+    expect(benchmarks.equal.strongerWinRate).toBeGreaterThan(0.45)
+    expect(benchmarks.equal.strongerWinRate).toBeLessThan(0.55)
+    expect(benchmarks.modest.strongerWinRate).toBeGreaterThanOrEqual(0.6)
+    expect(benchmarks.modest.strongerWinRate).toBeLessThanOrEqual(0.7)
+    expect(benchmarks.clear.strongerWinRate).toBeGreaterThanOrEqual(0.75)
+    expect(benchmarks.clear.strongerWinRate).toBeLessThanOrEqual(0.85)
+    expect(benchmarks.extreme.strongerWinRate).toBeGreaterThan(0.95)
+    expect(benchmarks.extreme.strongerWinRate).toBeLessThan(1)
+  })
+
   it('preserves strict random 25-player selection, Best Six inputs, and emergency identity', () => {
     const pool = createM2PlayerPool(1800)
     expect(pool.selectedPool).toHaveLength(AUCTION_POOL_SIZE)

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AI_PRESENTATION_DELAY_MS, AUCTION_RESULT_HOLD_MS } from '../domain/constants'
+import { createM2PlayerPool } from '../engine/playerPool'
 import { AuctionHarnessApp } from './App'
 import { createAuctionHarnessStore, TEAM_NAMES } from './auctionStore'
 
@@ -22,13 +23,26 @@ describe('M9 human vs AI auction harness', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it('creates a game and shows all 25 public selected players', () => {
+  it('creates a game while keeping all 25 selected player identities secret', () => {
     const { store } = renderHarness()
     fireEvent.click(screen.getByRole('button', { name: 'Start New Auction Game' }))
 
     expect(store.getState().stage).toBe('PRE_AUCTION')
-    expect(within(screen.getByRole('list', { name: 'Selected 25 players' })).getAllByRole('listitem')).toHaveLength(25)
+    expect(screen.getByText('25 secret players will be revealed one at a time.')).toBeInTheDocument()
+    expect(store.getState()).not.toHaveProperty('selectedPool')
+    expect(screen.queryByText('Selected player pool')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Start Round 1' })).toBeInTheDocument()
+  })
+
+  it('does not leak an unrevealed player or future order through public snapshots', () => {
+    const seed = 8675309
+    const futurePlayer = createM2PlayerPool(seed).auctionQueue[1]
+    const { store } = createAndStart(seed)
+    const snapshot = JSON.stringify(store.getState())
+
+    expect(store.getState().auction).not.toHaveProperty('selectedPool')
+    expect(snapshot).not.toContain(futurePlayer.id)
+    expect(snapshot).not.toContain(futurePlayer.name)
   })
 
   it('renders one human seat, three AI seats, current player, and no future-player hint', () => {
@@ -118,7 +132,7 @@ describe('M9 human vs AI auction harness', () => {
     expect(screen.getByLabelText('Team B auction seat')).toHaveAttribute('data-active', 'true')
   })
 
-  it('keeps a large history bounded, scrollable, complete, and pinned to its newest result', () => {
+  it('keeps a large auction history bounded and pinned while the auction is active', () => {
     const { store } = createAndStart(202613)
 
     act(() => {
@@ -144,12 +158,9 @@ describe('M9 human vs AI auction harness', () => {
       }
     })
 
-    const completedHistory = screen.getByRole('list', { name: 'Auction history' })
     const results = store.getState().auction!.results
-    expect(completedHistory).toHaveStyle({ overflowY: 'auto' })
-    expect(completedHistory.style.maxHeight).not.toBe('')
-    expect(within(completedHistory).getAllByRole('listitem')).toHaveLength(results.length)
-    expect(within(completedHistory).getAllByRole('listitem').at(-1)).toHaveTextContent(results.at(-1)!.player.name)
+    expect(results.length).toBeGreaterThan(0)
+    expect(screen.queryByRole('list', { name: 'Auction history' })).not.toBeInTheDocument()
   })
 
   it('renders the Round 2 no-base opening state without inventing a leader', () => {
@@ -172,7 +183,7 @@ describe('M9 human vs AI auction harness', () => {
     expect(within(centralArea).queryByText(/leading/i)).not.toBeInTheDocument()
   })
 
-  it('keeps a full squad inspectable with ratings, free emergency labels, and Best Six badges', () => {
+  it('removes the persistent squad panel from tournament match views', () => {
     const { store } = createAndStart(202610)
     act(() => {
       let ticks = 0
@@ -182,13 +193,10 @@ describe('M9 human vs AI auction harness', () => {
       }
     })
 
-    const squad = screen.getByRole('list', { name: 'Team A purchased players' })
-    expect(squad).toHaveStyle({ overflowY: 'auto' })
-    expect(squad.style.maxHeight).not.toBe('')
-    expect(within(squad).getAllByRole('listitem')).toHaveLength(6)
-    expect(within(squad).getAllByText('FREE')).toHaveLength(6)
-    expect(within(squad).getAllByText('BEST SIX')).toHaveLength(6)
-    expect(within(squad).getAllByText(/BAT \d+ · BOWL \d+ · WK \d+ · LEAD \d+/)).toHaveLength(6)
+    expect(screen.getByRole('article', { name: 'League match 1' })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Team A purchased players' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Bought Players / Squad')).not.toBeInTheDocument()
+    expect(screen.queryByText('Best Six — Automatic')).not.toBeInTheDocument()
   })
 
   it('keeps the authoritative ten-second timer functioning', () => {
@@ -200,15 +208,16 @@ describe('M9 human vs AI auction harness', () => {
     expect(store.getState().auction!.turnTimer?.remainingSeconds).toBe(9)
   })
 
-  it('rejects stale AI work after restart and cleans up timers on unmount', () => {
+  it('rejects stale AI work after quitting and cleans up timers on unmount', () => {
     const { store, unmount } = createAndStart()
     fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
     expect(vi.getTimerCount()).toBeGreaterThan(0)
 
-    fireEvent.click(screen.getByRole('button', { name: 'New Game' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Quit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Quit Game' }))
     act(() => vi.advanceTimersByTime(AI_PRESENTATION_DELAY_MS * 2))
     expect(store.getState()).toMatchObject({
-      stage: 'PRE_AUCTION',
+      stage: 'WELCOME',
       auction: null,
       lastAiDecision: null,
     })
@@ -217,7 +226,23 @@ describe('M9 human vs AI auction harness', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('visibly shows automatic emergency signings and marks them FREE without controls', () => {
+  it('opens Quit confirmation, lets Cancel preserve state, and confirms to main screen', () => {
+    const { store } = createAndStart(90210)
+    const before = structuredClone(store.getState().auction)
+    fireEvent.click(screen.getByRole('button', { name: 'Quit' }))
+    expect(screen.getByRole('dialog', { name: 'Quit current game?' })).toHaveTextContent('progress will be lost')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(store.getState().auction).toEqual(before)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Quit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Quit Game' }))
+    expect(store.getState()).toMatchObject({ stage: 'WELCOME', auction: null, tournament: null })
+    expect(screen.getByRole('button', { name: 'Start New Auction Game' })).toBeInTheDocument()
+  })
+
+  it('keeps emergency assignments in state without displaying them below tournament results', () => {
     const { store } = createAndStart(202610)
 
     act(() => {
@@ -229,18 +254,12 @@ describe('M9 human vs AI auction harness', () => {
     })
 
     expect(store.getState().auction?.status).toBe('COMPLETE')
-    const emergencyPanel = screen.getByRole('heading', {
-      name: 'Emergency Signings',
-    }).closest('section')!
-    expect(emergencyPanel).toBeInTheDocument()
-    expect(screen.getByText('Team A receives 6 emergency players')).toBeInTheDocument()
-    expect(screen.getAllByText('FREE')).toHaveLength(6)
-    expect(screen.getAllByText(/Emergency · Overall/)).toHaveLength(6)
+    expect(store.getState().auction!.emergencySignings.length).toBeGreaterThan(0)
+    expect(screen.queryByRole('heading', { name: 'Emergency Signings' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Auction controls')).not.toBeInTheDocument()
-    expect(within(emergencyPanel).queryByRole('button')).not.toBeInTheDocument()
   })
 
-  it('connects auction completion through Best Six to league, final, and champion', () => {
+  it('progressively reveals league standings, final matchup, and champion', () => {
     const { store } = createAndStart(202611)
 
     act(() => {
@@ -251,20 +270,66 @@ describe('M9 human vs AI auction harness', () => {
       }
     })
 
-    const tournament = store.getState().tournament!
-    expect(tournament).not.toBeNull()
+    expect(store.getState().tournament).not.toBeNull()
     expect(store.getState().auction?.teams.every(({ bestSix }) => bestSix.isComplete)).toBe(true)
     expect(screen.getByRole('heading', { name: 'League Matches' })).toBeInTheDocument()
-    expect(within(screen.getByLabelText('Six league matches')).getAllByRole('article')).toHaveLength(6)
+    expect(screen.getByRole('article', { name: 'League match 1' })).toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: 'League match 2' })).not.toBeInTheDocument()
+    expect(store.getState().tournament?.revealedLeagueMatches).toHaveLength(1)
+    expect(store.getState().tournament?.finalMatch).toBeNull()
     expect(screen.getByRole('table', { name: 'League standings' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Standings after Match 1' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Final League Table' })).not.toBeInTheDocument()
+    for (let match = 2; match <= 6; match += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'NEXT MATCH' }))
+      expect(screen.getByRole('article', { name: `League match ${match}` })).toBeInTheDocument()
+      expect(screen.getAllByRole('article')).toHaveLength(1)
+      expect(store.getState().tournament?.revealedLeagueMatches).toHaveLength(match)
+    }
+    expect(screen.getByRole('heading', { name: 'Final League Table' })).toBeInTheDocument()
+    expect(screen.getByText(/QUALIFIED FOR THE FINAL|KNOCKED OUT/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'CONTINUE TO FINAL' }))
     expect(screen.getByText(/^1st ·/)).toHaveTextContent('vs 2nd ·')
+    expect(store.getState().tournament?.finalMatch).toBeNull()
+    expect(screen.queryByRole('article', { name: 'League match 6' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'PLAY FINAL' }))
     expect(screen.getByRole('article', { name: 'Final match' })).toBeInTheDocument()
-    expect(screen.getByRole('status', { name: 'Tournament champion' })).toHaveTextContent('CHAMPION — TEAM')
+    expect(screen.getByRole('status', { name: 'Tournament champion' })).toHaveTextContent(/TOURNAMENT CHAMPION/i)
+    expect(screen.getByRole('status', { name: 'Tournament champion' })).toHaveTextContent(/GAME OVER/i)
     expect(screen.getByRole('button', { name: 'PLAY AGAIN' })).toBeInTheDocument()
-    expect(tournament.leagueMatches).toHaveLength(6)
-    expect(tournament.finalMatch.winnerTeamId).toBe(tournament.championTeamId)
-    expect(tournament.finalMatch.loserTeamId).toBe(tournament.runnerUpTeamId)
+    const tournament = store.getState().tournament!
+    expect(tournament.revealedLeagueMatches).toHaveLength(6)
+    expect(tournament.finalMatch!.winnerTeamId).toBe(tournament.championTeamId)
+    expect(tournament.finalMatch!.loserTeamId).toBe(tournament.runnerUpTeamId)
     expect(tournament.standings.map(({ position }) => position)).toEqual([1, 2, 3, 4])
+  })
+
+  it('shows RUNNERS-UP when the qualified human loses the Final', () => {
+    const { store } = createAndStart(202610)
+    act(() => {
+      while (store.getState().auction?.status === 'IN_PROGRESS') store.getState().tick()
+      for (let step = 0; step < 7; step += 1) store.getState().advanceTournament()
+    })
+    const complete = store.getState().tournament!
+    expect(complete.finalistTeamIds).toContain('team-a')
+    const opponent = complete.finalistTeamIds!.find((teamId) => teamId !== 'team-a')!
+    act(() => store.setState({
+      tournament: {
+        ...complete,
+        championTeamId: opponent,
+        runnerUpTeamId: 'team-a',
+        finalMatch: {
+          ...complete.finalMatch!,
+          winnerTeamId: opponent,
+          loserTeamId: 'team-a',
+        },
+      },
+    }))
+
+    expect(screen.getByRole('status', { name: 'Tournament champion' })).toHaveTextContent('RUNNERS-UP')
+    expect(screen.getByRole('status', { name: 'Tournament champion' })).toHaveTextContent(
+      TEAM_NAMES[opponent].toUpperCase(),
+    )
   })
 
   it('Play Again starts a fresh game through the existing reset path', () => {
@@ -276,6 +341,7 @@ describe('M9 human vs AI auction harness', () => {
         ticks += 1
       }
     })
+    for (let step = 0; step < 7; step += 1) act(() => store.getState().advanceTournament())
     const oldGameId = store.getState().gameId
     fireEvent.click(screen.getByRole('button', { name: 'PLAY AGAIN' }))
     expect(store.getState()).toMatchObject({
@@ -317,6 +383,7 @@ describe('M9 human vs AI auction harness', () => {
     expect(announcer).toHaveTextContent(result.player.name)
     expect(announcer).toHaveTextContent(`₹${result.price}`)
     expect(announcer).toHaveTextContent('Team A')
+    expect(store.getState().auction!.currentCard!.player.id).toBe(result.player.id)
 
     const timerBefore = store.getState().auction!.turnTimer!.remainingSeconds
     act(() => vi.advanceTimersByTime(1_000))
@@ -325,6 +392,7 @@ describe('M9 human vs AI auction harness', () => {
 
     act(() => vi.advanceTimersByTime(AUCTION_RESULT_HOLD_MS - 1_000))
     expect(screen.getByRole('status', { name: 'Live auction announcer' })).toHaveTextContent(/NEXT PLAYER/i)
+    expect(store.getState().auction!.currentCard!.player.id).not.toBe(result.player.id)
   })
 
   it('publishes coarse AI labels without raw seeded tendency data', () => {
@@ -334,24 +402,20 @@ describe('M9 human vs AI auction harness', () => {
     expect(allText).not.toMatch(/aggression|thrift|riskTolerance|balancePreference|volatility/)
   })
 
-  it('presents actual emergency assignments, automatic Best Six, and champion state', () => {
+  it('presents a clean champion state without persistent squad or Best Six sections', () => {
     const { store } = createAndStart(202610)
     act(() => {
       while (store.getState().auction?.status === 'IN_PROGRESS') store.getState().tick()
     })
+    for (let step = 0; step < 7; step += 1) act(() => store.getState().advanceTournament())
     const auction = store.getState().auction!
     const tournament = store.getState().tournament!
-    const assigned = auction.emergencySignings[0]?.players[0]?.player
-    if (assigned) expect(screen.getAllByText(assigned.name).length).toBeGreaterThan(0)
-    auction.teams.forEach((team) => {
-      const panel = screen.getByRole('article', { name: `${TEAM_NAMES[team.teamId]} automatic Best Six` })
-      expect(within(panel).getAllByRole('listitem')).toHaveLength(6)
-      team.bestSix.playerIds.forEach((id) => {
-        const owned = [...team.purchasedPlayers, ...team.emergencyPlayers].find(({ player }) => player.id === id)!
-        expect(panel).toHaveTextContent(owned.player.name)
-      })
-    })
-    expect(screen.getByRole('status', { name: 'Tournament champion' })).toHaveTextContent(TEAM_NAMES[tournament.championTeamId])
-    expect(screen.getByRole('list', { name: 'Champion Best Six' })).toHaveTextContent(/\S/)
+    expect(auction.emergencySignings.length).toBeGreaterThan(0)
+    expect(screen.getByRole('status', { name: 'Tournament champion' })).toHaveTextContent(
+      TEAM_NAMES[tournament.championTeamId!].toUpperCase(),
+    )
+    expect(screen.queryByText('Bought Players / Squad')).not.toBeInTheDocument()
+    expect(screen.queryByText('Best Six — Automatic')).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Champion Best Six' })).not.toBeInTheDocument()
   })
 })

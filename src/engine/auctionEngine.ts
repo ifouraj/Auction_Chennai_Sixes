@@ -129,7 +129,7 @@ export type Round1AuctionState = AuctionState
 
 type PublicAuctionStateBase = Omit<
   AuctionState,
-  'privateAuctionQueue' | 'seed' | 'aiPersonalities' | 'teams'
+  'privateAuctionQueue' | 'selectedPool' | 'seed' | 'aiPersonalities' | 'teams'
 >
 export type PublicRound1AuctionState = PublicAuctionStateBase & {
   readonly teams: readonly PublicAuctionTeamState[]
@@ -352,7 +352,6 @@ export function getPublicAuctionState(
         strength: bestSix.strength,
       }
     }),
-    selectedPool: state.selectedPool,
     currentCard: state.currentCard,
     turnTimer: state.turnTimer,
     playerIndex: state.playerIndex,

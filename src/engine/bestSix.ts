@@ -25,18 +25,20 @@ interface Candidate {
   readonly playerIds: readonly PlayerId[]
   /** All categories scaled to a common denominator of 15. */
   readonly scaledCategories: readonly [number, number, number, number]
+  readonly exactOverall: number
 }
 
 function makeCandidate(
   purchases: readonly BestSixPlayerInput[],
 ): Candidate {
   const playerIds = purchases.map(({ player }) => player.id).sort(compareIds)
-  const { scaledCategories } = evaluateTeamStrength(purchases)
+  const { exact, scaledCategories } = evaluateTeamStrength(purchases)
 
   return {
     purchases,
     playerIds,
     scaledCategories,
+    exactOverall: exact.overall,
   }
 }
 
@@ -57,8 +59,8 @@ function compareLexicalIds(
 
 /** Positive means left is the preferred candidate. */
 function compareCandidates(left: Candidate, right: Candidate): number {
-  const leftOverall = left.scaledCategories.reduce((sum, score) => sum + score, 0)
-  const rightOverall = right.scaledCategories.reduce((sum, score) => sum + score, 0)
+  const leftOverall = left.exactOverall
+  const rightOverall = right.exactOverall
   if (leftOverall !== rightOverall) return leftOverall - rightOverall
 
   const leftWeakest = Math.min(...left.scaledCategories)

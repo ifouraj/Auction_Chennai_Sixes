@@ -74,11 +74,12 @@ export const MATCH_SIMULATION_CONFIG = Object.freeze({
     six: -0.02,
     wicket: 0.11,
   }),
-  leadershipMatchupScale: 0.16,
-  leadershipStabilityScale: 0.13,
-  normalFormSwing: 0.18,
-  chaosFormChance: 0.2,
-  chaosFormSwing: 4,
+  batBowlMatchupScale: 0.9,
+  leadershipMatchupScale: 0.06,
+  leadershipStabilityScale: 0.05,
+  normalFormSwing: 0.12,
+  chaosFormChance: 0.08,
+  chaosFormSwing: 2.5,
   chasePressureThreshold: 2.15,
   chasePressureScale: 0.12,
   matchSeedDomain: 0x6d313173,
@@ -147,7 +148,8 @@ function deliveryWeights(
   formSwing: number,
 ): readonly number[] {
   const config = MATCH_SIMULATION_CONFIG
-  const matchup = (batting.batting - fielding.bowling) / 100
+  const matchup = ((batting.batting - fielding.bowling) / 100)
+      * config.batBowlMatchupScale
     + ((batting.leadership - fielding.leadership) / 100)
       * config.leadershipMatchupScale
     + formSwing

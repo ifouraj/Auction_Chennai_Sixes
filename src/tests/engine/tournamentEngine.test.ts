@@ -90,10 +90,10 @@ describe('M12 tournament engine', () => {
 
   it.each([
     ['Overall', [60, 60, 60, 60], [50, 50, 50, 50]],
-    ['BAT', [60, 40, 50, 50], [50, 50, 50, 50]],
-    ['BOWL', [50, 60, 40, 50], [50, 50, 50, 50]],
-    ['WK', [50, 50, 60, 40], [50, 50, 50, 50]],
-    ['LEAD', [50, 50, 50, 60], [50, 50, 60, 40]],
+    ['BAT', [51, 50, 50, 50], [50, 50, 50, 50]],
+    ['BOWL', [50, 51, 50, 50], [50, 50, 50, 50]],
+    ['WK', [50, 50, 60, 50], [50, 50, 50, 50]],
+    ['LEAD', [50, 50, 50, 60], [50, 50, 50, 50]],
   ])('uses %s in the strength tiebreak ladder', (_label, aRatings, bRatings) => {
     const inputs = [team('team-a', 0, aRatings), team('team-b', 1, bRatings), teams()[2], teams()[3]]
     const simulator = mappedSimulator({

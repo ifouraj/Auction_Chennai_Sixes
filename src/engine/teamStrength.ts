@@ -18,7 +18,7 @@ export interface ExactSquadStrength {
 
 export interface TeamStrengthEvaluation {
   readonly exact: ExactSquadStrength
-  /** BAT, BOWL, WK and LEAD on a shared exact denominator of 15. */
+  /** Exact BAT, BOWL, WK and LEAD values used for stable Best Six ties. */
   readonly scaledCategories: readonly [number, number, number, number]
 }
 
@@ -44,14 +44,14 @@ function sumBestRatings(
 }
 
 /**
- * Exact, unrounded M7 category values. Best-six selection consumes this same
+ * Exact, unrounded category values. Best-six selection consumes this same
  * calculation so its choice can never drift from the public strength model.
  */
 export function evaluateTeamStrength(
   purchases: readonly PurchasedPlayerStrengthInput[],
 ): TeamStrengthEvaluation {
   const battingTotal = sumBestRatings(purchases, 'batting', 5)
-  const bowlingTotal = sumBestRatings(purchases, 'bowling', 3)
+  const bowlingTotal = sumBestRatings(purchases, 'bowling', 5)
   const wicketKeeping = purchases.reduce(
     (best, { player }) => Math.max(best, player.wicketKeeping),
     0,
@@ -60,14 +60,14 @@ export function evaluateTeamStrength(
     (best, { player }) => Math.max(best, player.leadership),
     0,
   )
-  const scaledCategories = [
-    battingTotal * 3,
-    bowlingTotal * 5,
-    wicketKeeping * 15,
-    leadership * 15,
-  ] as const
-  const batting = scaledCategories[0] / 15
-  const bowling = scaledCategories[1] / 15
+  // Dividing by five preserves zero-valued missing contributor slots until a
+  // squad has enough players to fill the category.
+  const batting = battingTotal / 5
+  const bowling = bowlingTotal / 5
+  const core = batting + bowling === 0
+    ? 0
+    : (2 * batting * bowling) / (batting + bowling)
+  const scaledCategories = [batting, bowling, wicketKeeping, leadership] as const
 
   return {
     exact: {
@@ -75,8 +75,7 @@ export function evaluateTeamStrength(
       bowling,
       wicketKeeping,
       leadership,
-      overall:
-        scaledCategories.reduce((sum, category) => sum + category, 0) / 60,
+      overall: 0.94 * core + 0.03 * wicketKeeping + 0.03 * leadership,
     },
     scaledCategories,
   }
@@ -89,10 +88,10 @@ export function calculateExactTeamStrength(
 }
 
 /**
- * Calculates M7 strength for the supplied player set, regardless of price or
+ * Calculates strength for the supplied player set, regardless of price or
  * auction round. Public values use Math.round (nearest integer, with .5 rounded
- * upward). Overall is rounded only after averaging the exact four dimensions,
- * avoiding compounded category-rounding error.
+ * upward). Overall is rounded only after applying the harmonic BAT/BOWL core
+ * and 94/3/3 weighting, avoiding compounded category-rounding error.
  */
 export function calculateTeamStrength(
   purchases: readonly PurchasedPlayerStrengthInput[],
