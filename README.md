@@ -45,6 +45,15 @@ Create a production build:
 npm run build
 ```
 
+Run the standalone deterministic M15 balance sweep (1,000 games by default):
+
+```sh
+npm run diagnostics:balance
+```
+
+Override `BALANCE_SEED_START` and `BALANCE_GAME_COUNT` for a different or
+larger inclusive seed range. This sweep is excluded from ordinary Vitest runs.
+
 Preview the production build locally:
 
 ```sh

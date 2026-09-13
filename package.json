@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run",
+    "diagnostics:balance": "vitest run --config vitest.balance.config.ts --reporter=verbose --maxWorkers=1",
     "test:watch": "vitest",
     "preview": "vite preview"
   },

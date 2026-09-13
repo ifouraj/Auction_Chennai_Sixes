@@ -9,5 +9,10 @@ export default defineConfig({
     globals: true,
     setupFiles: './src/tests/setup.ts',
     css: true,
+    exclude: [
+      'src/diagnostics/runBalanceDiagnostics.test.ts',
+      '**/node_modules/**',
+      '**/dist/**',
+    ],
   },
 })
