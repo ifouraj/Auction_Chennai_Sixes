@@ -55,6 +55,8 @@ export interface AuctionTeamState {
 
 export interface PublicAuctionTeamState extends AuctionTeamState {
   readonly availablePlayerCount: number
+  /** Public UI hint derived from the authoritative purse/reserve rules. */
+  readonly canAffordMinimumBid: boolean
   readonly bestSix: BestSixResult
   readonly strength: BestSixResult['strength']
 }
@@ -342,6 +344,10 @@ export function getPublicAuctionState(
       return {
         ...team,
         availablePlayerCount: availablePlayers.length,
+        canAffordMinimumBid:
+          state.status === 'IN_PROGRESS' && state.currentCard !== null
+            ? canTeamAffordLegalBid(state, state.currentCard, team.teamId)
+            : false,
         bestSix,
         strength: bestSix.strength,
       }

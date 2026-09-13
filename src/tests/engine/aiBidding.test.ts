@@ -89,6 +89,7 @@ function team(
     purchasedPlayers,
     emergencyPlayers: [],
     availablePlayerCount: owned.length,
+    canAffordMinimumBid: true,
     bestSix,
     strength: bestSix.strength,
   }

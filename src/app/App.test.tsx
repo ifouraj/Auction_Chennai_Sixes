@@ -83,12 +83,112 @@ describe('M9 human vs AI auction harness', () => {
     fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
     const before = structuredClone(store.getState().auction!.currentCard)
 
-    act(() => vi.advanceTimersByTime(AI_PRESENTATION_DELAY_MS))
+    act(() => vi.advanceTimersByTime(AI_PRESENTATION_DELAY_MS - 1))
+    expect(store.getState().lastAiDecision).toBeNull()
+
+    act(() => vi.advanceTimersByTime(1))
 
     expect(store.getState().lastAiDecision).not.toBeNull()
     expect(store.getState().auction!.currentCard).not.toEqual(before)
     expect(store.getState().auction!.currentCard?.lastActionByTeamId['team-b'])
       .toMatch(/BID|PASS|NOT_INTERESTED/)
+  })
+
+  it('marks the active seat clearly and moves current bid information beside the player', () => {
+    const { store } = createAndStart()
+    const auction = store.getState().auction!
+    const card = auction.currentCard!
+    const centralArea = screen.getByLabelText('Central auction area')
+    const currentBid = within(centralArea).getByLabelText('Current bid')
+    const activeSeat = screen.getByLabelText('Team A auction seat')
+
+    expect(activeSeat).toHaveAttribute('data-active', 'true')
+    expect(within(activeSeat).getByText('TURN')).toBeInTheDocument()
+    expect(currentBid).toHaveTextContent('No bid yet')
+    expect(currentBid).toHaveTextContent(`Opening at ₹${card.basePrice}`)
+    expect(within(screen.getByLabelText('Auction controls')).queryByText('Current Bid')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Bid amount' }), {
+      target: { value: card.basePrice },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'BID' }))
+
+    expect(currentBid).toHaveTextContent(`₹${card.basePrice}`)
+    expect(currentBid).toHaveTextContent('Team A leading')
+    expect(screen.getByLabelText('Team B auction seat')).toHaveAttribute('data-active', 'true')
+  })
+
+  it('keeps a large history bounded, scrollable, complete, and pinned to its newest result', () => {
+    const { store } = createAndStart(202613)
+
+    act(() => {
+      while ((store.getState().auction?.results.length ?? 0) < 1) {
+        store.getState().tick()
+      }
+    })
+    const history = screen.getByRole('list', { name: 'Auction history' })
+    Object.defineProperty(history, 'scrollHeight', { configurable: true, value: 840 })
+
+    act(() => {
+      while ((store.getState().auction?.results.length ?? 0) < 2) {
+        store.getState().tick()
+      }
+    })
+    expect(history.scrollTop).toBe(840)
+
+    act(() => {
+      let ticks = 0
+      while (store.getState().auction?.status === 'IN_PROGRESS' && ticks < 3_000) {
+        store.getState().tick()
+        ticks += 1
+      }
+    })
+
+    const completedHistory = screen.getByRole('list', { name: 'Auction history' })
+    const results = store.getState().auction!.results
+    expect(completedHistory).toHaveStyle({ overflowY: 'auto' })
+    expect(completedHistory.style.maxHeight).not.toBe('')
+    expect(within(completedHistory).getAllByRole('listitem')).toHaveLength(results.length)
+    expect(within(completedHistory).getAllByRole('listitem').at(-1)).toHaveTextContent(results.at(-1)!.player.name)
+  })
+
+  it('renders the Round 2 no-base opening state without inventing a leader', () => {
+    const { store } = createAndStart(202614)
+
+    act(() => {
+      let ticks = 0
+      while (store.getState().auction?.phase === 'ROUND_1' && ticks < 2_000) {
+        store.getState().tick()
+        ticks += 1
+      }
+    })
+
+    expect(store.getState().auction).toMatchObject({ phase: 'ROUND_2', round: 2 })
+    const centralArea = screen.getByLabelText('Central auction area')
+    expect(within(centralArea).getByText('No base price')).toBeInTheDocument()
+    expect(within(centralArea).getByText('Opening floor ₹1')).toBeInTheDocument()
+    expect(within(centralArea).getByLabelText('Current bid')).toHaveTextContent('No bid yet')
+    expect(within(centralArea).getByLabelText('Current bid')).toHaveTextContent('Open from ₹1')
+    expect(within(centralArea).queryByText(/leading/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps a full squad inspectable with ratings, free emergency labels, and Best Six badges', () => {
+    const { store } = createAndStart(202610)
+    act(() => {
+      let ticks = 0
+      while (store.getState().auction?.status === 'IN_PROGRESS' && ticks < 3_000) {
+        store.getState().tick()
+        ticks += 1
+      }
+    })
+
+    const squad = screen.getByRole('list', { name: 'Team A purchased players' })
+    expect(squad).toHaveStyle({ overflowY: 'auto' })
+    expect(squad.style.maxHeight).not.toBe('')
+    expect(within(squad).getAllByRole('listitem')).toHaveLength(6)
+    expect(within(squad).getAllByText('FREE')).toHaveLength(6)
+    expect(within(squad).getAllByText('BEST SIX')).toHaveLength(6)
+    expect(within(squad).getAllByText(/BAT \d+ · BOWL \d+ · WK \d+ · LEAD \d+/)).toHaveLength(6)
   })
 
   it('keeps the authoritative ten-second timer functioning', () => {

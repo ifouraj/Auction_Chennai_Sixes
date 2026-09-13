@@ -12,3 +12,33 @@ body {
   min-width: 320px;
   min-height: 100vh;
 }
+
+.auction-history-scroll,
+.squad-scroll {
+  max-height: min(36rem, 58vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.auction-history-scroll {
+  min-height: 8rem;
+}
+
+.auction-history-scroll:focus-visible,
+.squad-scroll:focus-visible {
+  outline: 2px solid rgb(103 232 249);
+  outline-offset: 3px;
+}
+
+@media (max-width: 79.999rem) {
+  .auction-table-layout > :nth-child(2) {
+    grid-row: span 2;
+  }
+}
+
+@media (max-width: 63.999rem) {
+  .auction-table-layout > :nth-child(2) {
+    grid-row: auto;
+  }
+}

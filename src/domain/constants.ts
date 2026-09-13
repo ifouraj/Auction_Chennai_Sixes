@@ -8,4 +8,4 @@ export const TARGET_NORMAL_SQUAD_SIZE = 6
 export const MINIMUM_PUNISHMENT_PLAYER_CATALOG_SIZE = 24
 
 /** Presentation-only delay; AI reasoning itself never reads the wall clock. */
-export const AI_PRESENTATION_DELAY_MS = 800
+export const AI_PRESENTATION_DELAY_MS = 2_000
