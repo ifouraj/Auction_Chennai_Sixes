@@ -2,6 +2,8 @@
 
 Status: complete. No gameplay tuning required.
 
+Historical measurement note: this report records the M15 balance sweep before the final approved post-playtest presentation/economy pass. The no-rebalance conclusion remains the M15 outcome, but the root `README.md` and current implementation/tests are authoritative for V1 rules. In particular, V1 money is presented as a ₹3Cr purse with legal ₹10L bid granularity; raw unit-level price observations below must not be read as current legal bid examples.
+
 ## Method
 
 - Final sweep: 10,000 complete all-AI auctions and tournaments, inclusive seeds 1-10,000.
