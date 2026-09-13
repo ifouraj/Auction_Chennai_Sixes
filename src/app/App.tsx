@@ -19,13 +19,13 @@ function teamName(teamId: TeamId | null): string {
 function Header({ state }: { state: AuctionHarnessState }) {
   const auction = state.auction
   return (
-    <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-4">
+    <header className="game-header flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-4">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">Four-team card-table auction</p>
         <h1 className="text-2xl font-black uppercase tracking-wide text-white">Chennai Sixes Auction</h1>
       </div>
       {auction && (
-        <div className="flex items-center gap-8 text-sm font-bold uppercase tracking-wider text-slate-300" aria-label="Auction progress">
+        <div className="auction-progress flex items-center gap-8 text-sm font-bold uppercase tracking-wider text-slate-300" aria-label="Auction progress">
           <span>{auction.phase === 'COMPLETE' ? 'Auction Complete' : `Round ${auction.round}`}</span>
           <span>{auction.status === 'COMPLETE' ? `${auction.results.length} players processed` : `Player ${auction.playerIndex + 1} / ${auction.totalPlayers}`}</span>
         </div>
@@ -39,11 +39,11 @@ function Header({ state }: { state: AuctionHarnessState }) {
 
 function Welcome({ state }: { state: AuctionHarnessState }) {
   return (
-    <section className="grid min-h-[65vh] place-items-center text-center">
+    <section className="welcome-screen grid min-h-[65vh] place-items-center text-center">
       <div>
         <h2 className="text-2xl font-bold">Choose your franchise</h2>
         <p className="mt-2 max-w-2xl text-slate-400">Three distinct AI opponents will be selected from the remaining franchises. Every team starts equal.</p>
-        <div className="mt-6 grid max-w-5xl gap-3 text-left sm:grid-cols-2 lg:grid-cols-5" role="radiogroup" aria-label="Choose franchise">
+        <div className="franchise-grid mt-6 grid max-w-5xl gap-3 text-left sm:grid-cols-2 lg:grid-cols-5" role="radiogroup" aria-label="Choose franchise">
           {FRANCHISES.map((franchise) => <button aria-checked={state.selectedFranchiseId === franchise.id} className={`rounded border p-3 ${state.selectedFranchiseId === franchise.id ? 'border-cyan-300 bg-cyan-950' : 'border-slate-700 bg-slate-900'}`} key={franchise.id} onClick={() => state.selectFranchise(franchise.id)} role="radio" type="button"><span className="block font-black text-white">{franchise.name}</span><span className="mt-1 block text-xs text-slate-400">{franchise.note}</span></button>)}
         </div>
         <button className="mt-6 rounded bg-cyan-500 px-6 py-3 font-bold text-slate-950 hover:bg-cyan-400" onClick={() => state.createGame()}>
@@ -57,7 +57,7 @@ function Welcome({ state }: { state: AuctionHarnessState }) {
 function PreAuction({ playerCount, startAuction }: { playerCount: number; startAuction: () => void }) {
   return (
     <section className="mt-6">
-      <div className="flex items-end justify-between gap-4">
+      <div className="pre-auction-header flex items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold">Auction briefing</h2>
           <p className="text-slate-400">{playerCount} secret players will be revealed one at a time.</p>
@@ -101,7 +101,7 @@ function TeamCard({ auction, team, selected, onSelect, announcerFocus, personali
   const isActive = auction.currentCard?.activeTeamId === team.teamId
   const status = teamStatus(auction, team)
   return (
-    <article aria-label={`${teamName(team.teamId)} auction seat`} className={`relative overflow-hidden rounded-lg border p-4 transition ${isActive ? 'border-cyan-200 bg-cyan-950/80 shadow-[0_0_0_2px_rgba(103,232,249,0.35),0_0_24px_rgba(34,211,238,0.12)]' : selected ? 'border-slate-400 bg-slate-800' : 'border-slate-700 bg-slate-900'} ${announcerFocus && !isActive ? 'announcer-team-focus' : ''} ${status === 'NOT INTERESTED' ? 'opacity-60' : ''}`} data-active={isActive ? 'true' : 'false'} data-announcer-focus={announcerFocus ? 'true' : 'false'}>
+    <article aria-label={`${teamName(team.teamId)} auction seat`} className={`team-card relative overflow-hidden rounded-lg border p-4 transition ${isActive ? 'border-cyan-200 bg-cyan-950/80 shadow-[0_0_0_2px_rgba(103,232,249,0.35),0_0_24px_rgba(34,211,238,0.12)]' : selected ? 'border-slate-400 bg-slate-800' : 'border-slate-700 bg-slate-900'} ${announcerFocus && !isActive ? 'announcer-team-focus' : ''} ${status === 'NOT INTERESTED' ? 'opacity-60' : ''}`} data-active={isActive ? 'true' : 'false'} data-announcer-focus={announcerFocus ? 'true' : 'false'}>
       {isActive && <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-cyan-300" />}
       <button className="w-full text-left" onClick={onSelect} type="button">
         <span className="flex items-center justify-between gap-2">
@@ -111,13 +111,13 @@ function TeamCard({ auction, team, selected, onSelect, announcerFocus, personali
           </span>
           <span className={`rounded px-2 py-1 text-[0.65rem] font-black tracking-wider ${isActive ? 'bg-cyan-300 text-slate-950' : status === 'LEADING' ? 'bg-emerald-400/20 text-emerald-300' : 'bg-slate-800 text-slate-300'}`}>{status}</span>
         </span>
-        <span className="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <span className="team-card-summary mt-3 grid grid-cols-2 gap-3 text-sm">
           <span><span className="block text-xs uppercase text-slate-500">Balance</span><strong className="text-lg text-white">{formatMoney(team.balance)}</strong></span>
           <span><span className="block text-xs uppercase text-slate-500">Players</span><strong className="text-lg text-white">{team.availablePlayerCount}</strong></span>
         </span>
         <dl
           aria-label={`${teamName(team.teamId)} strength`}
-          className="mt-3 grid grid-cols-5 gap-1 border-t border-slate-700 pt-3 text-center"
+          className="team-card-strength mt-3 grid grid-cols-5 gap-1 border-t border-slate-700 pt-3 text-center"
           role="group"
         >
           {([
@@ -133,10 +133,10 @@ function TeamCard({ auction, team, selected, onSelect, announcerFocus, personali
             </div>
           ))}
         </dl>
-        <span className="mt-2 block text-xs text-slate-500">Seat {(participant?.seatIndex ?? 0) + 1} · {participant?.kind === 'AI' ? 'AI' : 'Human'} · {team.purchasedPlayerCount} bought{team.emergencyPlayers.length > 0 ? ` + ${team.emergencyPlayers.length} emergency` : ''} · Select squad</span>
+        <span className="team-card-detail mt-2 block text-xs text-slate-500">Seat {(participant?.seatIndex ?? 0) + 1} · {participant?.kind === 'AI' ? 'AI' : 'Human'} · {team.purchasedPlayerCount} bought{team.emergencyPlayers.length > 0 ? ` + ${team.emergencyPlayers.length} emergency` : ''} · Select squad</span>
       </button>
       {isActive && (
-        <div className="mt-3 flex items-end justify-between border-t border-cyan-800 pt-3">
+        <div className="team-card-timer mt-3 flex items-end justify-between border-t border-cyan-800 pt-3">
           <span className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">Active turn</span>
           <span aria-label="Seconds remaining" className="text-3xl font-black leading-none text-white">{auction.turnTimer?.remainingSeconds ?? 0}s</span>
         </div>
@@ -171,7 +171,7 @@ function PlayerCard({ auction, announcementEvent }: { auction: PublicAuctionStat
     : null
   const stats = [['BAT', player.batting], ['BOWL', player.bowling], ['WK', player.wicketKeeping], ['LEAD', player.leadership], ['Overall', player.overall]]
   return (
-    <div className="relative rounded-xl border border-amber-400/70 bg-slate-900 px-5 py-6 text-center shadow-xl shadow-black/20" aria-label="Central auction area">
+    <div className="player-card relative rounded-xl border border-amber-400/70 bg-slate-900 px-5 py-6 text-center shadow-xl shadow-black/20" aria-label="Central auction area">
       {heldResult && (
         <div className="absolute inset-0 z-10 grid place-content-center rounded-xl bg-slate-900 px-5 py-6">
           <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-300">Resolved Player</p>
@@ -183,8 +183,8 @@ function PlayerCard({ auction, announcementEvent }: { auction: PublicAuctionStat
       <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-300">Current Player</p>
       <h2 className="mt-2 text-3xl font-black text-white">{player.name}</h2>
       <p className="mt-1 text-sm font-semibold text-slate-400">{player.country} · Age {player.age}</p>
-      <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-slate-300">{player.description}</p>
-      <dl className="mx-auto mt-5 grid max-w-xl grid-cols-5 gap-2">
+      <p className="player-description mx-auto mt-4 max-w-xl text-sm leading-6 text-slate-300">{player.description}</p>
+      <dl className="player-ratings mx-auto mt-5 grid max-w-xl grid-cols-5 gap-2">
         {stats.map(([label, value]) => (
           <div className={`rounded border px-2 py-3 ${label === 'Overall' ? 'border-amber-500/50 bg-amber-950/40' : 'border-slate-700 bg-slate-800'}`} key={label}>
             <dt className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-400">{label}</dt>
@@ -193,7 +193,7 @@ function PlayerCard({ auction, announcementEvent }: { auction: PublicAuctionStat
         ))}
       </dl>
       {!heldResult && <LiveAnnouncer event={announcementEvent} />}
-      <div className="mx-auto mt-5 grid max-w-xl gap-3 border-t border-slate-700 pt-5 sm:grid-cols-2">
+      <div className="player-prices mx-auto mt-5 grid max-w-xl gap-3 border-t border-slate-700 pt-5 sm:grid-cols-2">
         <div className="rounded-lg bg-slate-950/70 px-4 py-3">
           <p className="text-[0.65rem] font-black uppercase tracking-[0.22em] text-slate-500">{card.basePrice === null ? 'Round 2 opening' : 'Round 1 base price'}</p>
           {card.basePrice === null
@@ -220,10 +220,11 @@ function PlayerCard({ auction, announcementEvent }: { auction: PublicAuctionStat
   )
 }
 
-function BoughtPlayers({ auction, selectedTeamId, onSelectTeam }: {
+function BoughtPlayers({ auction, selectedTeamId, onSelectTeam, idSuffix = '' }: {
   auction: PublicAuctionState
   selectedTeamId: TeamId
   onSelectTeam: (teamId: TeamId) => void
+  idSuffix?: string
 }) {
   const selectedTeam = auction.teams.find((team) => team.teamId === selectedTeamId) ?? auction.teams[0]
   const squad = [
@@ -237,10 +238,10 @@ function BoughtPlayers({ auction, selectedTeamId, onSelectTeam }: {
     })),
   ]
   return (
-    <aside className="min-w-0 rounded-lg border border-slate-700 bg-slate-900 p-4" aria-labelledby="bought-players-title">
-      <h2 className="text-sm font-black uppercase tracking-[0.16em] text-white" id="bought-players-title">Bought Players / Squad</h2>
-      <label className="mt-4 block text-xs font-bold uppercase tracking-wider text-slate-500" htmlFor="bought-team">Team</label>
-      <select className="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2 font-semibold text-white" id="bought-team" onChange={(event) => onSelectTeam(event.target.value)} value={selectedTeam.teamId}>
+    <aside className="min-w-0 rounded-lg border border-slate-700 bg-slate-900 p-4" aria-labelledby={`bought-players-title${idSuffix}`}>
+      <h2 className="text-sm font-black uppercase tracking-[0.16em] text-white" id={`bought-players-title${idSuffix}`}>Bought Players / Squad</h2>
+      <label className="mt-4 block text-xs font-bold uppercase tracking-wider text-slate-500" htmlFor={`bought-team${idSuffix}`}>Team</label>
+      <select className="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2 font-semibold text-white" id={`bought-team${idSuffix}`} onChange={(event) => onSelectTeam(event.target.value)} value={selectedTeam.teamId}>
         {auction.teams.map((team) => <option key={team.teamId} value={team.teamId}>{teamName(team.teamId)}</option>)}
       </select>
       {squad.length === 0 ? <p className="mt-5 text-sm text-slate-500">No players purchased yet.</p> : (
@@ -263,7 +264,7 @@ function BoughtPlayers({ auction, selectedTeamId, onSelectTeam }: {
   )
 }
 
-function AuctionHistory({ auction }: { auction: PublicAuctionState }) {
+function AuctionHistory({ auction, idSuffix = '' }: { auction: PublicAuctionState; idSuffix?: string }) {
   const scrollRef = useRef<HTMLOListElement>(null)
   useEffect(() => {
     const history = scrollRef.current
@@ -271,8 +272,8 @@ function AuctionHistory({ auction }: { auction: PublicAuctionState }) {
   }, [auction.results.length])
 
   return (
-    <aside className="min-w-0 rounded-lg border border-slate-700 bg-slate-900 p-4" aria-labelledby="auction-history-title">
-      <h2 className="text-sm font-black uppercase tracking-[0.16em] text-white" id="auction-history-title">Auction History</h2>
+    <aside className="min-w-0 rounded-lg border border-slate-700 bg-slate-900 p-4" aria-labelledby={`auction-history-title${idSuffix}`}>
+      <h2 className="text-sm font-black uppercase tracking-[0.16em] text-white" id={`auction-history-title${idSuffix}`}>Auction History</h2>
       {auction.results.length === 0 ? <p className="mt-5 text-sm text-slate-500">Results will appear here chronologically.</p> : (
         <ol aria-label="Auction history" className="auction-history-scroll mt-4 divide-y divide-slate-800 pr-2" ref={scrollRef} style={{ maxHeight: 'min(36rem, 58vh)', overflowY: 'auto' }} tabIndex={0}>
           {auction.results.map((result, index) => (
@@ -284,6 +285,47 @@ function AuctionHistory({ auction }: { auction: PublicAuctionState }) {
         </ol>
       )}
     </aside>
+  )
+}
+
+type MobilePanel = 'SQUADS' | 'HISTORY' | null
+
+function MobileAuctionAccess({ auction, selectedTeamId, onSelectTeam }: {
+  auction: PublicAuctionState
+  selectedTeamId: TeamId
+  onSelectTeam: (teamId: TeamId) => void
+}) {
+  const [panel, setPanel] = useState<MobilePanel>(null)
+
+  useEffect(() => {
+    if (panel === null) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPanel(null)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [panel])
+
+  return (
+    <div className="mobile-auction-access">
+      <nav aria-label="Mobile auction information" className="grid grid-cols-2 gap-2">
+        <button className="rounded border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-black tracking-[0.16em] text-cyan-200" onClick={() => setPanel('SQUADS')} type="button">SQUADS</button>
+        <button className="rounded border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-black tracking-[0.16em] text-cyan-200" onClick={() => setPanel('HISTORY')} type="button">HISTORY</button>
+      </nav>
+      {panel !== null && (
+        <div className="mobile-sheet-backdrop fixed inset-0 z-40 flex items-end bg-black/70" onClick={() => setPanel(null)}>
+          <section aria-label={`${panel === 'SQUADS' ? 'Squads' : 'History'} mobile panel`} aria-modal="true" className="mobile-sheet max-h-[82dvh] w-full overflow-y-auto rounded-t-2xl border border-slate-600 bg-slate-950 p-3 pb-6 shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog">
+            <div className="mb-3 flex items-center justify-between px-1">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">{panel}</p>
+              <button aria-label={`Close ${panel.toLowerCase()}`} className="rounded border border-slate-600 px-3 py-1.5 text-sm font-black text-white" onClick={() => setPanel(null)} type="button">CLOSE</button>
+            </div>
+            {panel === 'SQUADS'
+              ? <BoughtPlayers auction={auction} idSuffix="-mobile" onSelectTeam={onSelectTeam} selectedTeamId={selectedTeamId} />
+              : <AuctionHistory auction={auction} idSuffix="-mobile" />}
+          </section>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -301,7 +343,7 @@ function Controls({ auction, feedback, bid, pass, notInterested }: {
   const activeParticipant = participantForTeam(auction.participants, card.activeTeamId)
   const isHumanTurn = activeParticipant?.kind === 'HUMAN_LOCAL'
   return (
-    <section className="border-t border-cyan-800 bg-slate-900 px-4 py-4" aria-label="Auction controls" aria-disabled={!isHumanTurn}>
+    <section className="auction-controls border-t border-cyan-800 bg-slate-900 px-4 py-4" aria-label="Auction controls" aria-disabled={!isHumanTurn}>
       <div className="mx-auto flex max-w-[1500px] flex-wrap items-end justify-center gap-4">
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-500" htmlFor="bid-amount">Bid amount · <span>{teamName(card.activeTeamId)}</span></label>
@@ -435,15 +477,16 @@ function Auction({ state }: { state: AuctionHarnessState }) {
     <div className="mt-5">
       {showPostAuction && <Tournament state={state} />}
       {!showPostAuction && <div className="auction-table-layout grid items-start gap-4 lg:grid-cols-[minmax(210px,0.72fr)_minmax(470px,2fr)] xl:grid-cols-[minmax(230px,0.72fr)_minmax(520px,2fr)_minmax(230px,0.72fr)]">
-        <BoughtPlayers auction={auction} selectedTeamId={selectedTeamId} onSelectTeam={setSelectedTeamId} />
-        <section aria-label="Four teams" className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">{topTeams.map(renderTeam)}</div>
+        <div className="desktop-auction-panel"><BoughtPlayers auction={auction} selectedTeamId={selectedTeamId} onSelectTeam={setSelectedTeamId} /></div>
+        <section aria-label="Four teams" className="auction-center space-y-4">
+          <div className="team-row team-row-top grid gap-4 sm:grid-cols-2">{topTeams.map(renderTeam)}</div>
           {auction.status === 'IN_PROGRESS' && <PlayerCard auction={auction} announcementEvent={announcementEvent} />}
-          <div className="grid gap-4 sm:grid-cols-2">{bottomTeams.map(renderTeam)}</div>
+          <div className="team-row team-row-bottom grid gap-4 sm:grid-cols-2">{bottomTeams.map(renderTeam)}</div>
         </section>
-        <div className="lg:col-start-1 xl:col-start-auto"><AuctionHistory auction={auction} /></div>
+        <div className="desktop-auction-panel lg:col-start-1 xl:col-start-auto"><AuctionHistory auction={auction} /></div>
       </div>}
-      {auction.status === 'IN_PROGRESS' && !resultHold && <div className="-mx-6 mt-5"><Controls auction={auction} feedback={state.feedback} bid={state.bid} pass={state.pass} notInterested={state.notInterested} key={`${auction.round}-${auction.currentCard?.cardNumber}-${auction.currentCard?.highestBid}`} /></div>}
+      {!showPostAuction && <MobileAuctionAccess auction={auction} onSelectTeam={setSelectedTeamId} selectedTeamId={selectedTeamId} />}
+      {auction.status === 'IN_PROGRESS' && !resultHold && <div className="auction-controls-shell -mx-6 mt-5"><Controls auction={auction} feedback={state.feedback} bid={state.bid} pass={state.pass} notInterested={state.notInterested} key={`${auction.round}-${auction.currentCard?.cardNumber}-${auction.currentCard?.highestBid}`} /></div>}
     </div>
   )
 }
@@ -506,7 +549,7 @@ export function AuctionHarnessApp({ store = useAuctionHarness }: { store?: Harne
     store,
   ])
   return (
-    <main className="min-h-screen bg-slate-950 px-6 py-6 text-slate-100">
+    <main className="app-shell min-h-screen bg-slate-950 px-6 py-6 text-slate-100">
       <div className="mx-auto max-w-[1500px]">
         <Header state={state} />
         {state.stage === 'WELCOME' && <Welcome state={state} />}

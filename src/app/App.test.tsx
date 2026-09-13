@@ -81,6 +81,60 @@ describe('M9 human vs AI auction harness', () => {
     })
   })
 
+  it('opens and closes the mobile Squads sheet using the shared auction state', () => {
+    const { store } = createAndStart(202613)
+    act(() => {
+      while ((store.getState().auction?.results.length ?? 0) < 1) {
+        store.getState().tick()
+      }
+    })
+    const result = store.getState().auction!.results[0]
+
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Mobile auction information' })).getByRole('button', { name: 'SQUADS' }))
+    const sheet = screen.getByRole('dialog', { name: 'Squads mobile panel' })
+    expect(sheet).toBeInTheDocument()
+
+    if (result.outcome === 'SOLD') {
+      fireEvent.change(within(sheet).getByLabelText('Team'), { target: { value: result.buyerTeamId } })
+      const squad = within(sheet).getByRole('list', { name: `${TEAM_NAMES[result.buyerTeamId]} purchased players` })
+      expect(squad).toHaveTextContent(result.player.name)
+      expect(squad).toHaveTextContent(formatMoney(result.price))
+    } else {
+      expect(within(sheet).getByText('No players purchased yet.')).toBeInTheDocument()
+    }
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close squads' }))
+    expect(screen.queryByRole('dialog', { name: 'Squads mobile panel' })).not.toBeInTheDocument()
+  })
+
+  it('shows chronological authoritative results in the mobile History sheet', () => {
+    const { store } = createAndStart(202613)
+    act(() => {
+      while ((store.getState().auction?.results.length ?? 0) < 2) {
+        store.getState().tick()
+      }
+    })
+    const results = store.getState().auction!.results
+
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Mobile auction information' })).getByRole('button', { name: 'HISTORY' }))
+    const sheet = screen.getByRole('dialog', { name: 'History mobile panel' })
+    const historyItems = within(sheet).getAllByRole('listitem')
+
+    expect(historyItems).toHaveLength(results.length)
+    results.forEach((result, index) => {
+      expect(historyItems[index]).toHaveTextContent(result.player.name)
+    })
+  })
+
+  it('keeps both persistent auction side panels in the desktop composition', () => {
+    const { container } = createAndStart()
+    const desktopPanels = container.querySelectorAll('.desktop-auction-panel')
+
+    expect(desktopPanels).toHaveLength(2)
+    expect(within(desktopPanels[0] as HTMLElement).getByText('Bought Players / Squad')).toBeInTheDocument()
+    expect(within(desktopPanels[1] as HTMLElement).getByText('Auction History')).toBeInTheDocument()
+  })
+
   it('disables all human controls and shows deciding feedback during an AI turn', () => {
     createAndStart()
     fireEvent.click(screen.getByRole('button', { name: 'PASS' }))

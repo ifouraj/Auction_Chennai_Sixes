@@ -69,6 +69,10 @@ body {
   outline-offset: 3px;
 }
 
+.mobile-auction-access {
+  display: none;
+}
+
 @media (max-width: 79.999rem) {
   .auction-table-layout > :nth-child(2) {
     grid-row: span 2;
@@ -78,5 +82,294 @@ body {
 @media (max-width: 63.999rem) {
   .auction-table-layout > :nth-child(2) {
     grid-row: auto;
+  }
+}
+
+@media (max-width: 39.999rem) {
+  .app-shell {
+    padding: 0.75rem;
+  }
+
+  .game-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem 0.75rem;
+    padding-bottom: 0.65rem;
+  }
+
+  .game-header > div:first-child p {
+    display: none;
+  }
+
+  .game-header h1 {
+    font-size: 1rem;
+    line-height: 1.25rem;
+  }
+
+  .game-header .auction-progress {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.68rem;
+  }
+
+  .game-header > button {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.7rem;
+  }
+
+  .auction-table-layout {
+    display: block;
+  }
+
+  .welcome-screen {
+    min-height: auto;
+    padding-block: 1.25rem;
+  }
+
+  .franchise-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .franchise-grid button {
+    padding: 0.6rem;
+  }
+
+  .pre-auction-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .desktop-auction-panel {
+    display: none;
+  }
+
+  .auction-center {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .auction-center > * {
+    margin: 0;
+  }
+
+  .player-card {
+    order: 1;
+    padding: 0.7rem;
+  }
+
+  .team-row-top {
+    order: 2;
+  }
+
+  .team-row-bottom {
+    order: 3;
+  }
+
+  .team-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .team-card {
+    padding: 0.55rem;
+  }
+
+  .team-card button > span:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .team-card button > span:first-child > span:last-child {
+    padding: 0.2rem 0.35rem;
+    font-size: 0.55rem;
+  }
+
+  .team-card-summary {
+    gap: 0.35rem;
+    margin-top: 0.45rem;
+  }
+
+  .team-card-summary span span {
+    font-size: 0.58rem;
+  }
+
+  .team-card-summary strong {
+    font-size: 0.9rem;
+  }
+
+  .team-card-strength,
+  .team-card-detail {
+    display: none;
+  }
+
+  .team-card-timer {
+    margin-top: 0.4rem;
+    padding-top: 0.4rem;
+  }
+
+  .team-card-timer span:first-child {
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+  }
+
+  .team-card-timer span:last-child {
+    font-size: 1.35rem;
+  }
+
+  .player-card > div > h2,
+  .player-card > h2 {
+    margin-top: 0.2rem;
+    font-size: 1.45rem;
+    line-height: 1.7rem;
+  }
+
+  .player-description {
+    display: none;
+  }
+
+  .player-ratings {
+    gap: 0.25rem;
+    margin-top: 0.55rem;
+  }
+
+  .player-ratings > div {
+    padding: 0.35rem 0.15rem;
+  }
+
+  .player-ratings dt {
+    font-size: 0.52rem;
+    letter-spacing: 0;
+  }
+
+  .player-ratings dd {
+    margin-top: 0.1rem;
+    font-size: 1rem;
+  }
+
+  .player-card .live-announcer {
+    margin-top: 0.5rem;
+    padding: 0.45rem 0.65rem;
+    text-align: left;
+  }
+
+  .player-card .live-announcer > p:first-child,
+  .player-card .live-announcer > p:last-child {
+    display: none;
+  }
+
+  .player-card .live-announcer > p:nth-child(2) {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.1rem;
+  }
+
+  .player-prices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem;
+    margin-top: 0.55rem;
+    padding-top: 0.55rem;
+  }
+
+  .player-prices > div {
+    padding: 0.4rem;
+  }
+
+  .player-prices p {
+    margin-top: 0.1rem;
+  }
+
+  .player-prices p.text-2xl,
+  .player-prices p.text-3xl,
+  .player-prices p.text-xl {
+    font-size: 1rem;
+    line-height: 1.25rem;
+  }
+
+  .mobile-auction-access {
+    display: block;
+    margin-top: 0.55rem;
+  }
+
+  .mobile-sheet .auction-history-scroll,
+  .mobile-sheet .squad-scroll {
+    max-height: 58dvh !important;
+  }
+
+  .auction-controls {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .auction-controls-shell {
+    margin-left: -0.75rem;
+    margin-right: -0.75rem;
+    margin-top: 0.55rem;
+  }
+
+  .auction-controls > div {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .auction-controls > div > div {
+    grid-column: 1 / -1;
+  }
+
+  .auction-controls input {
+    width: 100%;
+    padding: 0.35rem 0.6rem;
+    font-size: 1rem;
+  }
+
+  .auction-controls button {
+    min-height: 2.65rem;
+    padding: 0.45rem 0.3rem;
+    font-size: 0.7rem;
+  }
+
+  .auction-controls + p,
+  .auction-controls > p {
+    margin-top: 0.4rem;
+    font-size: 0.7rem;
+  }
+
+  .app-shell > div > section,
+  .app-shell > div > div > section {
+    max-width: 100%;
+  }
+
+  .app-shell section[aria-labelledby="tournament-title"] {
+    gap: 1rem;
+    padding: 0.75rem;
+  }
+
+  .app-shell section[aria-labelledby="tournament-title"] h2 {
+    font-size: 1.2rem;
+  }
+
+  .app-shell table {
+    font-size: 0.75rem;
+  }
+
+  .app-shell table th,
+  .app-shell table td {
+    padding: 0.35rem;
+  }
+
+  .app-shell [aria-label="Tournament champion"] {
+    padding: 1rem;
+  }
+
+  .app-shell [aria-label="Tournament champion"] h2 {
+    overflow-wrap: anywhere;
+    font-size: 1.75rem;
   }
 }
