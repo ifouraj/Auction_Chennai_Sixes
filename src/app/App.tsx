@@ -16,7 +16,7 @@ function Header({ state }: { state: AuctionHarnessState }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-4">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">M11 playable auction + match</p>
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-cyan-400">M12 playable auction + tournament</p>
         <h1 className="text-2xl font-black uppercase tracking-wide text-white">Chennai Sixes Auction</h1>
       </div>
       {auction && (
@@ -280,50 +280,61 @@ function Controls({ auction, feedback, bid, pass, notInterested }: {
   )
 }
 
-function ExhibitionMatch({ state }: { state: AuctionHarnessState }) {
-  const auction = state.auction!
-  const [teamAId, setTeamAId] = useState<TeamId>(auction.teams[0].teamId)
-  const [teamBId, setTeamBId] = useState<TeamId>(auction.teams[1].teamId)
-  const result = state.lastMatch
-  const margin = result?.margin.type === 'TIEBREAK'
-    ? 'won after a tiebreak'
-    : result === null
-      ? ''
-      : `won by ${result.margin.value} ${
-          result.margin.type === 'RUNS'
-            ? result.margin.value === 1 ? 'run' : 'runs'
-            : result.margin.value === 1 ? 'wicket' : 'wickets'
-        }`
-
+function MatchCard({ result, label }: {
+  result: NonNullable<AuctionHarnessState['tournament']>['finalMatch']
+  label: string
+}) {
+  const inningsFor = (teamId: TeamId) => result.firstInnings.teamId === teamId
+    ? result.firstInnings
+    : result.secondInnings
+  const teamA = inningsFor(result.teamAId)
+  const teamB = inningsFor(result.teamBId)
   return (
-    <section className="mb-5 rounded-lg border border-cyan-500/60 bg-cyan-950/40 p-5" aria-labelledby="exhibition-title">
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="mr-auto">
-          <h2 className="text-xl font-black uppercase tracking-wide text-cyan-200" id="exhibition-title">Development Match Tester</h2>
-          <p className="mt-1 text-sm text-slate-400">Automatic five-over exhibition using each team&apos;s Best Six.</p>
-        </div>
-        <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-400" htmlFor="match-team-a">Team A</label>
-          <select className="mt-1 rounded border border-slate-600 bg-slate-950 px-3 py-2 font-semibold text-white" id="match-team-a" onChange={(event) => setTeamAId(event.target.value)} value={teamAId}>
-            {auction.teams.map((team) => <option key={team.teamId} value={team.teamId}>{teamName(team.teamId)}</option>)}
-          </select>
-        </div>
-        <span className="pb-2 font-black text-slate-500">VS</span>
-        <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-400" htmlFor="match-team-b">Team B</label>
-          <select className="mt-1 rounded border border-slate-600 bg-slate-950 px-3 py-2 font-semibold text-white" id="match-team-b" onChange={(event) => setTeamBId(event.target.value)} value={teamBId}>
-            {auction.teams.map((team) => <option key={team.teamId} value={team.teamId}>{teamName(team.teamId)}</option>)}
-          </select>
-        </div>
-        <button className="rounded bg-cyan-400 px-5 py-2.5 font-black text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-40" disabled={teamAId === teamBId} onClick={() => state.simulateExhibition(teamAId, teamBId)}>SIMULATE MATCH</button>
+    <article className="rounded border border-slate-700 bg-slate-950/60 p-4" aria-label={label}>
+      <h3 className="font-black text-white">{teamName(result.teamAId)} vs {teamName(result.teamBId)}</h3>
+      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <p><span className="block text-slate-500">{teamName(teamA.teamId)}</span><strong className="text-lg text-white">{teamA.runs}/{teamA.wickets} ({teamA.overs} ov)</strong></p>
+        <p><span className="block text-slate-500">{teamName(teamB.teamId)}</span><strong className="text-lg text-white">{teamB.runs}/{teamB.wickets} ({teamB.overs} ov)</strong></p>
       </div>
-      {result !== null && (
-        <div className="mt-5 grid gap-3 border-t border-cyan-800 pt-5 md:grid-cols-3" role="status" aria-label="Exhibition match result">
-          <div className="rounded bg-slate-950/60 p-4"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">First innings</span><strong className="mt-1 block text-xl text-white">{teamName(result.firstInnings.teamId)} {result.firstInnings.runs}/{result.firstInnings.wickets} ({result.firstInnings.overs} ov)</strong></div>
-          <div className="rounded bg-slate-950/60 p-4"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Second innings</span><strong className="mt-1 block text-xl text-white">{teamName(result.secondInnings.teamId)} {result.secondInnings.runs}/{result.secondInnings.wickets} ({result.secondInnings.overs} ov)</strong></div>
-          <div className="rounded bg-emerald-950/70 p-4"><span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Winner</span><strong className="mt-1 block text-xl text-emerald-200">{teamName(result.winnerTeamId)} {margin}</strong></div>
+      <p className="mt-3 border-t border-slate-800 pt-3 text-sm font-bold text-emerald-300">{result.resultText.replace(result.winnerTeamId, teamName(result.winnerTeamId))}</p>
+    </article>
+  )
+}
+
+function Tournament({ state }: { state: AuctionHarnessState }) {
+  const tournament = state.tournament
+  if (tournament === null) return null
+  return (
+    <section className="mb-5 space-y-6 rounded-lg border border-cyan-500/60 bg-cyan-950/40 p-5" aria-labelledby="tournament-title">
+      <div>
+        <h2 className="text-2xl font-black uppercase tracking-wide text-cyan-200" id="tournament-title">League Matches</h2>
+        <p className="mt-1 text-sm text-slate-400">Six automatic league matches using each team&apos;s fixed Best Six.</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3" aria-label="Six league matches">
+          {tournament.leagueMatches.map((match, index) => (
+            <MatchCard key={match.matchId} label={`League match ${index + 1}`} result={match} />
+          ))}
         </div>
-      )}
+      </div>
+      <div>
+        <h2 className="text-xl font-black uppercase tracking-wide text-white">Standings</h2>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-left" aria-label="League standings">
+            <thead className="border-b border-slate-600 text-xs uppercase tracking-wider text-slate-400"><tr><th className="p-2">Position</th><th className="p-2">Team</th><th className="p-2">Played</th><th className="p-2">Won</th><th className="p-2">Lost</th><th className="p-2">Points</th><th className="p-2">Overall</th></tr></thead>
+            <tbody>{tournament.standings.map((standing) => <tr className="border-b border-slate-800" key={standing.teamId}><td className="p-2 font-black text-amber-300">{standing.position}</td><td className="p-2 font-bold text-white">{teamName(standing.teamId)}</td><td className="p-2">{standing.played}</td><td className="p-2">{standing.won}</td><td className="p-2">{standing.lost}</td><td className="p-2 font-black">{standing.points}</td><td className="p-2 text-slate-400">{standing.strength.overall}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </div>
+      <div className="rounded-lg border border-amber-400/70 bg-amber-950/30 p-5">
+        <p className="text-sm font-black uppercase tracking-[0.3em] text-amber-300">Final</p>
+        <p className="mt-2 text-lg font-bold text-white">1st · {teamName(tournament.finalistTeamIds[0])} vs 2nd · {teamName(tournament.finalistTeamIds[1])}</p>
+        <div className="mt-4"><MatchCard label="Final match" result={tournament.finalMatch} /></div>
+      </div>
+      <div className="rounded-lg bg-emerald-500 p-6 text-center text-slate-950" role="status" aria-label="Tournament champion">
+        <p className="text-sm font-black uppercase tracking-[0.35em]">Champion</p>
+        <h2 className="mt-2 text-4xl font-black">CHAMPION — {teamName(tournament.championTeamId).toUpperCase()}</h2>
+        <p className="mt-2 font-bold">Runner-up: {teamName(tournament.runnerUpTeamId)}</p>
+        <button className="mt-5 rounded bg-slate-950 px-6 py-3 font-black text-white hover:bg-slate-800" onClick={() => state.createGame()}>PLAY AGAIN</button>
+      </div>
     </section>
   )
 }
@@ -338,8 +349,8 @@ function Auction({ state }: { state: AuctionHarnessState }) {
   const bottomTeams = auction.teams.slice(2, 4)
   return (
     <div className="mt-5">
-      {auction.status === 'COMPLETE' && <section className="mb-5 rounded border border-emerald-500 bg-emerald-950 p-6 text-center"><h2 className="text-3xl font-black text-emerald-200">AUCTION COMPLETE</h2><p className="mt-2 text-emerald-100">Emergency assignments are complete. Every team now has at least six available players.</p></section>}
-      {auction.status === 'COMPLETE' && <ExhibitionMatch state={state} />}
+      {auction.status === 'COMPLETE' && <section className="mb-5 rounded border border-emerald-500 bg-emerald-950 p-6 text-center"><h2 className="text-3xl font-black text-emerald-200">AUCTION COMPLETE</h2><p className="mt-2 text-emerald-100">Emergency assignments and automatic Best Six selection are complete. The tournament has been simulated.</p></section>}
+      {auction.status === 'COMPLETE' && <Tournament state={state} />}
       <EmergencySignings auction={auction} />
       {auction.phase === 'ROUND_2' && <p role="status" className="mb-4 rounded border border-violet-500 bg-violet-950 p-3 text-center font-bold text-violet-200">Round 2 has started — unsold players return with no base price.</p>}
       {lastResultText && <p role="status" className="mb-4 rounded border border-amber-500 bg-amber-950 p-3 text-center font-bold text-amber-200">{lastResultText}</p>}

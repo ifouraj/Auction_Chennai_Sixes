@@ -1,0 +1,38 @@
+import { describe, expect, it } from 'vitest'
+
+import { createAuctionHarnessStore } from '../../app/auctionStore'
+
+describe('M12 seeded full V1 gameplay loop', () => {
+  it('runs auction, emergency fill, Best Six, league, final, and champion', () => {
+    const store = createAuctionHarnessStore(202612)
+    store.getState().createGame(202612)
+    expect(store.getState().stage).toBe('PRE_AUCTION')
+    store.getState().startAuction()
+
+    let ticks = 0
+    while (store.getState().auction?.status === 'IN_PROGRESS' && ticks < 3_000) {
+      store.getState().tick()
+      ticks += 1
+    }
+
+    const state = store.getState()
+    const auction = state.auction!
+    const tournament = state.tournament!
+    expect(auction.status).toBe('COMPLETE')
+    expect(auction.emergencySignings.length).toBeGreaterThan(0)
+    expect(auction.teams).toHaveLength(4)
+    expect(auction.teams.every(({ availablePlayerCount }) => availablePlayerCount >= 6)).toBe(true)
+    expect(auction.teams.every(({ bestSix }) => bestSix.isComplete && bestSix.playerIds.length === 6)).toBe(true)
+    expect(tournament.leagueMatches).toHaveLength(6)
+    expect(tournament.standings).toHaveLength(4)
+    expect(tournament.finalistTeamIds).toEqual(tournament.standings.slice(0, 2).map(({ teamId }) => teamId))
+    expect(tournament.championTeamId).toBe(tournament.finalMatch.winnerTeamId)
+    expect(tournament.runnerUpTeamId).toBe(tournament.finalMatch.loserTeamId)
+
+    const replay = createAuctionHarnessStore(202612)
+    replay.getState().createGame(202612)
+    replay.getState().startAuction()
+    while (replay.getState().auction?.status === 'IN_PROGRESS') replay.getState().tick()
+    expect(replay.getState().tournament).toEqual(tournament)
+  })
+})

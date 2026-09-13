@@ -140,7 +140,7 @@ describe('M9 human vs AI auction harness', () => {
     expect(within(emergencyPanel).queryByRole('button')).not.toBeInTheDocument()
   })
 
-  it('runs and displays a compact exhibition match after auction completion', () => {
+  it('connects auction completion through Best Six to league, final, and champion', () => {
     const { store } = createAndStart(202611)
 
     act(() => {
@@ -151,23 +151,36 @@ describe('M9 human vs AI auction harness', () => {
       }
     })
 
-    const tester = screen.getByRole('heading', {
-      name: 'Development Match Tester',
-    }).closest('section')!
-    expect(tester).toBeInTheDocument()
-    expect(within(tester).getByLabelText('Team A')).toHaveValue('team-a')
-    expect(within(tester).getByLabelText('Team B')).toHaveValue('team-b')
+    const tournament = store.getState().tournament!
+    expect(tournament).not.toBeNull()
+    expect(store.getState().auction?.teams.every(({ bestSix }) => bestSix.isComplete)).toBe(true)
+    expect(screen.getByRole('heading', { name: 'League Matches' })).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Six league matches')).getAllByRole('article')).toHaveLength(6)
+    expect(screen.getByRole('table', { name: 'League standings' })).toBeInTheDocument()
+    expect(screen.getByText(/^1st ·/)).toHaveTextContent('vs 2nd ·')
+    expect(screen.getByRole('article', { name: 'Final match' })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Tournament champion' })).toHaveTextContent('CHAMPION — TEAM')
+    expect(screen.getByRole('button', { name: 'PLAY AGAIN' })).toBeInTheDocument()
+    expect(tournament.leagueMatches).toHaveLength(6)
+    expect(tournament.finalMatch.winnerTeamId).toBe(tournament.championTeamId)
+    expect(tournament.finalMatch.loserTeamId).toBe(tournament.runnerUpTeamId)
+    expect(tournament.standings.map(({ position }) => position)).toEqual([1, 2, 3, 4])
+  })
 
-    fireEvent.click(within(tester).getByRole('button', { name: 'SIMULATE MATCH' }))
-
-    const result = within(tester).getByRole('status', {
-      name: 'Exhibition match result',
+  it('Play Again starts a fresh game through the existing reset path', () => {
+    const { store } = createAndStart(202612)
+    act(() => {
+      let ticks = 0
+      while (store.getState().auction?.status === 'IN_PROGRESS' && ticks < 3_000) {
+        store.getState().tick()
+        ticks += 1
+      }
     })
-    expect(store.getState().lastMatch).not.toBeNull()
-    expect(within(result).getByText('First innings')).toBeInTheDocument()
-    expect(within(result).getByText('Second innings')).toBeInTheDocument()
-    expect(within(result).getByText('Winner')).toBeInTheDocument()
-    expect(result).toHaveTextContent(/Team [AB] \d+\/\d+ \(\d\.\d ov\)/)
-    expect(result).toHaveTextContent(/won by|won after a tiebreak/)
+    const oldGameId = store.getState().gameId
+    fireEvent.click(screen.getByRole('button', { name: 'PLAY AGAIN' }))
+    expect(store.getState()).toMatchObject({
+      stage: 'PRE_AUCTION', auction: null, tournament: null, gameId: oldGameId + 1,
+    })
+    expect(screen.getByRole('button', { name: 'Start Round 1' })).toBeInTheDocument()
   })
 })

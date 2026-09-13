@@ -20,7 +20,11 @@ import {
   type PublicAuctionState,
 } from '../engine/auctionEngine'
 import { createM2PlayerPool } from '../engine/playerPool'
-import { simulateMatch, type MatchResult, type MatchTeamInput } from '../engine/matchSimulator'
+import {
+  simulateTournament,
+  type TournamentResult,
+  type TournamentTeamInput,
+} from '../engine/tournamentEngine'
 
 export const DEFAULT_PARTICIPANTS: readonly AuctionParticipant[] = [
   { id: 'participant-a', teamId: 'team-a', seatIndex: 0, kind: 'HUMAN_LOCAL' },
@@ -52,7 +56,7 @@ export interface AuctionHarnessState {
   readonly auction: PublicAuctionState | null
   readonly lastResult: AuctionCardResult | null
   readonly lastAiDecision: AIDecisionEvaluation | null
-  readonly lastMatch: MatchResult | null
+  readonly tournament: TournamentResult | null
   readonly feedback: string | null
   readonly gameId: number
   createGame: (seed?: number) => void
@@ -62,7 +66,6 @@ export interface AuctionHarnessState {
   notInterested: () => void
   actForAI: (expectedTurn: AITurnIdentity) => void
   tick: () => void
-  simulateExhibition: (teamAId: TeamId, teamBId: TeamId) => void
 }
 
 const errorMessages: Readonly<Record<string, string>> = {
@@ -104,7 +107,26 @@ export function createAuctionHarnessStore(
   let decisionRandom = createAIDecisionRandom(initialSeed ?? 0)
   let gameId = 0
   let currentGameSeed = initialSeed ?? 0
-  let exhibitionSequence = 0
+
+  const tournamentFromAuction = (): TournamentResult | null => {
+    if (engineState?.status !== 'COMPLETE') return null
+    const publicState = getPublicAuctionState(engineState)
+    const teams = publicState.teams.map((team): TournamentTeamInput => {
+      const participant = publicState.participants.find(
+        (candidate) => candidate.teamId === team.teamId,
+      )
+      if (participant === undefined || !team.bestSix.isComplete) {
+        throw new Error(`Completed auction has no complete Best Six for ${team.teamId}`)
+      }
+      const selectedIds = new Set(team.bestSix.playerIds)
+      const bestSix = [
+        ...team.purchasedPlayers.map(({ player }) => player),
+        ...team.emergencyPlayers.map(({ player }) => player),
+      ].filter(({ id }) => selectedIds.has(id))
+      return { teamId: team.teamId, seatIndex: participant.seatIndex, bestSix }
+    })
+    return simulateTournament(teams, currentGameSeed)
+  }
 
   return create<AuctionHarnessState>((set) => {
     const applyEngineCommand = (
@@ -123,6 +145,7 @@ export function createAuctionHarnessStore(
         set({
           auction: getPublicAuctionState(engineState),
           lastResult: resultAfterAction(before, engineState),
+          tournament: tournamentFromAuction(),
           feedback: null,
         })
       } catch (error) {
@@ -136,13 +159,12 @@ export function createAuctionHarnessStore(
       auction: null,
       lastResult: null,
       lastAiDecision: null,
-      lastMatch: null,
+      tournament: null,
       feedback: null,
       gameId,
       createGame: (seed = initialSeed ?? Date.now()) => {
         gameId += 1
         currentGameSeed = seed
-        exhibitionSequence = 0
         pendingPool = createM2PlayerPool(seed)
         engineState = null
         decisionRandom = createAIDecisionRandom(seed)
@@ -152,7 +174,7 @@ export function createAuctionHarnessStore(
           auction: null,
           lastResult: null,
           lastAiDecision: null,
-          lastMatch: null,
+          tournament: null,
           feedback: null,
           gameId,
         })
@@ -165,7 +187,7 @@ export function createAuctionHarnessStore(
           auction: getPublicAuctionState(engineState),
           lastResult: null,
           lastAiDecision: null,
-          lastMatch: null,
+          tournament: null,
           feedback: null,
         })
       },
@@ -208,6 +230,7 @@ export function createAuctionHarnessStore(
             auction: getPublicAuctionState(engineState),
             lastResult: resultAfterAction(before, engineState),
             lastAiDecision: evaluation,
+            tournament: tournamentFromAuction(),
             feedback: null,
           })
         } catch (error) {
@@ -223,37 +246,12 @@ export function createAuctionHarnessStore(
           set({
             auction: getPublicAuctionState(engineState),
             ...(timerResult === null ? {} : { lastResult: timerResult }),
+            tournament: tournamentFromAuction(),
             feedback: null,
           })
         } catch (error) {
           set({ feedback: friendlyError(error) })
         }
-      },
-      simulateExhibition: (teamAId, teamBId) => {
-        if (engineState?.status !== 'COMPLETE' || teamAId === teamBId) return
-        const toMatchTeam = (teamId: TeamId): MatchTeamInput | null => {
-          const team = getPublicAuctionState(engineState!).teams.find(
-            (candidate) => candidate.teamId === teamId,
-          )
-          if (team === undefined || !team.bestSix.isComplete) return null
-          const selectedIds = new Set(team.bestSix.playerIds)
-          const bestSix = [
-            ...team.purchasedPlayers.map(({ player }) => player),
-            ...team.emergencyPlayers.map(({ player }) => player),
-          ].filter(({ id }) => selectedIds.has(id))
-          return { teamId, bestSix }
-        }
-        const teamA = toMatchTeam(teamAId)
-        const teamB = toMatchTeam(teamBId)
-        if (teamA === null || teamB === null) return
-        exhibitionSequence += 1
-        set({
-          lastMatch: simulateMatch(
-            teamA,
-            teamB,
-            (currentGameSeed + exhibitionSequence) | 0,
-          ),
-        })
       },
     }
   })
