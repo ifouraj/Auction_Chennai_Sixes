@@ -13,6 +13,44 @@ body {
   min-height: 100vh;
 }
 
+.live-announcer {
+  background: rgb(2 6 23 / 0.82);
+  border-color: rgb(71 85 105);
+  box-shadow: inset 3px 0 0 rgb(34 211 238 / 0.75);
+  animation: announcer-settle 180ms ease-out;
+}
+
+.live-announcer--bid,
+.live-announcer--sold {
+  border-color: rgb(52 211 153 / 0.65);
+  box-shadow: inset 3px 0 0 rgb(52 211 153);
+}
+
+.live-announcer--unsold,
+.live-announcer--out {
+  border-color: rgb(251 113 133 / 0.55);
+  box-shadow: inset 3px 0 0 rgb(251 113 133);
+}
+
+.live-announcer--transition {
+  border-color: rgb(167 139 250 / 0.6);
+  box-shadow: inset 3px 0 0 rgb(167 139 250);
+}
+
+.announcer-team-focus {
+  border-color: rgb(110 231 183 / 0.7);
+  box-shadow: 0 0 0 1px rgb(110 231 183 / 0.22);
+}
+
+@keyframes announcer-settle {
+  from { opacity: 0.7; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-announcer { animation: none; }
+}
+
 .auction-history-scroll,
 .squad-scroll {
   max-height: min(36rem, 58vh);

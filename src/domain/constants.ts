@@ -9,3 +9,6 @@ export const MINIMUM_PUNISHMENT_PLAYER_CATALOG_SIZE = 24
 
 /** Presentation-only delay; AI reasoning itself never reads the wall clock. */
 export const AI_PRESENTATION_DELAY_MS = 2_000
+
+/** Presentation-only result hold. The authoritative turn clock keeps its rules. */
+export const AUCTION_RESULT_HOLD_MS = 1_400

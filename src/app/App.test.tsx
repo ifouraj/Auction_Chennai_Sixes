@@ -1,9 +1,9 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AI_PRESENTATION_DELAY_MS } from '../domain/constants'
+import { AI_PRESENTATION_DELAY_MS, AUCTION_RESULT_HOLD_MS } from '../domain/constants'
 import { AuctionHarnessApp } from './App'
-import { createAuctionHarnessStore } from './auctionStore'
+import { createAuctionHarnessStore, TEAM_NAMES } from './auctionStore'
 
 function renderHarness(seed = 8675309) {
   const store = createAuctionHarnessStore(seed)
@@ -282,5 +282,76 @@ describe('M9 human vs AI auction harness', () => {
       stage: 'PRE_AUCTION', auction: null, tournament: null, gameId: oldGameId + 1,
     })
     expect(screen.getByRole('button', { name: 'Start Round 1' })).toBeInTheDocument()
+  })
+
+  it('shows one replacing announcer beside the current player from reveal through action', () => {
+    const { store } = createAndStart(141401)
+    const player = store.getState().auction!.currentCard!.player
+    const announcer = screen.getByRole('status', { name: 'Live auction announcer' })
+    expect(announcer).toHaveTextContent(new RegExp(player.name, 'i'))
+    expect(announcer).toHaveTextContent(/base price/i)
+    expect(screen.getAllByLabelText('Live auction announcer')).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'PASS' }))
+    expect(screen.getAllByLabelText('Live auction announcer')).toHaveLength(1)
+    expect(screen.getByRole('status', { name: 'Live auction announcer' })).toHaveTextContent(/TEAM A PASSES/i)
+    expect(screen.getByRole('status', { name: 'Live auction announcer' })).not.toHaveTextContent(/NEXT PLAYER/i)
+  })
+
+  it('holds SOLD before NEXT PLAYER while the authoritative timer still counts normally', () => {
+    const { store } = createAndStart(141402)
+    const openingBid = store.getState().auction!.currentCard!.basePrice!
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Bid amount' }), {
+      target: { value: openingBid },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'BID' }))
+    act(() => {
+      while ((store.getState().auction?.results.length ?? 0) === 0) {
+        store.getState().tick()
+      }
+    })
+    const result = store.getState().auction!.results[0]
+    expect(result.outcome).toBe('SOLD')
+    if (result.outcome !== 'SOLD') return
+    const announcer = screen.getByRole('status', { name: 'Live auction announcer' })
+    expect(announcer).toHaveTextContent(result.player.name)
+    expect(announcer).toHaveTextContent(`₹${result.price}`)
+    expect(announcer).toHaveTextContent('Team A')
+
+    const timerBefore = store.getState().auction!.turnTimer!.remainingSeconds
+    act(() => vi.advanceTimersByTime(1_000))
+    expect(store.getState().auction!.turnTimer!.remainingSeconds).toBe(timerBefore - 1)
+    expect(screen.getByRole('status', { name: 'Live auction announcer' })).toHaveTextContent(/SOLD/i)
+
+    act(() => vi.advanceTimersByTime(AUCTION_RESULT_HOLD_MS - 1_000))
+    expect(screen.getByRole('status', { name: 'Live auction announcer' })).toHaveTextContent(/NEXT PLAYER/i)
+  })
+
+  it('publishes coarse AI labels without raw seeded tendency data', () => {
+    createAndStart(141403)
+    const allText = document.body.textContent ?? ''
+    expect(allText).toMatch(/AI · (Aggressive|Patient|Bargain Hunter|Cautious|Stubborn|Chaotic)/)
+    expect(allText).not.toMatch(/aggression|thrift|riskTolerance|balancePreference|volatility/)
+  })
+
+  it('presents actual emergency assignments, automatic Best Six, and champion state', () => {
+    const { store } = createAndStart(202610)
+    act(() => {
+      while (store.getState().auction?.status === 'IN_PROGRESS') store.getState().tick()
+    })
+    const auction = store.getState().auction!
+    const tournament = store.getState().tournament!
+    const assigned = auction.emergencySignings[0]?.players[0]?.player
+    if (assigned) expect(screen.getAllByText(assigned.name).length).toBeGreaterThan(0)
+    auction.teams.forEach((team) => {
+      const panel = screen.getByRole('article', { name: `${TEAM_NAMES[team.teamId]} automatic Best Six` })
+      expect(within(panel).getAllByRole('listitem')).toHaveLength(6)
+      team.bestSix.playerIds.forEach((id) => {
+        const owned = [...team.purchasedPlayers, ...team.emergencyPlayers].find(({ player }) => player.id === id)!
+        expect(panel).toHaveTextContent(owned.player.name)
+      })
+    })
+    expect(screen.getByRole('status', { name: 'Tournament champion' })).toHaveTextContent(TEAM_NAMES[tournament.championTeamId])
+    expect(screen.getByRole('list', { name: 'Champion Best Six' })).toHaveTextContent(/\S/)
   })
 })

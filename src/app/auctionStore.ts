@@ -25,6 +25,16 @@ import {
   type TournamentResult,
   type TournamentTeamInput,
 } from '../engine/tournamentEngine'
+import {
+  eventAfterPublicAction,
+  eventAfterResultHold,
+  getTurnContext,
+  type AuctionPresentationEvent,
+} from '../presentation/auctionAnnouncer'
+import {
+  getPublicAIPersonalityLabel,
+  type PublicAIPersonalityLabel,
+} from '../presentation/aiPersonality'
 
 export const DEFAULT_PARTICIPANTS: readonly AuctionParticipant[] = [
   { id: 'participant-a', teamId: 'team-a', seatIndex: 0, kind: 'HUMAN_LOCAL' },
@@ -58,6 +68,9 @@ export interface AuctionHarnessState {
   readonly lastAiDecision: AIDecisionEvaluation | null
   readonly tournament: TournamentResult | null
   readonly feedback: string | null
+  readonly announcementEvent: AuctionPresentationEvent | null
+  readonly announcementId: number
+  readonly publicAiPersonalities: Readonly<Partial<Record<TeamId, PublicAIPersonalityLabel>>>
   readonly gameId: number
   createGame: (seed?: number) => void
   startAuction: () => void
@@ -66,6 +79,7 @@ export interface AuctionHarnessState {
   notInterested: () => void
   actForAI: (expectedTurn: AITurnIdentity) => void
   tick: () => void
+  advanceAnnouncement: (expectedAnnouncementId: number) => void
 }
 
 const errorMessages: Readonly<Record<string, string>> = {
@@ -107,6 +121,7 @@ export function createAuctionHarnessStore(
   let decisionRandom = createAIDecisionRandom(initialSeed ?? 0)
   let gameId = 0
   let currentGameSeed = initialSeed ?? 0
+  let announcementId = 0
 
   const tournamentFromAuction = (): TournamentResult | null => {
     if (engineState?.status !== 'COMPLETE') return null
@@ -131,6 +146,7 @@ export function createAuctionHarnessStore(
   return create<AuctionHarnessState>((set) => {
     const applyEngineCommand = (
       command: (state: AuctionState, teamId: TeamId) => AuctionState,
+      action: 'BID' | 'PASS' | 'NOT_INTERESTED',
       expectedKind?: AuctionParticipant['kind'],
     ): void => {
       if (engineState === null || engineState.currentCard === null) return
@@ -141,10 +157,20 @@ export function createAuctionHarnessStore(
       )
       if (expectedKind !== undefined && participant?.kind !== expectedKind) return
       try {
+        const beforePublic = getPublicAuctionState(before)
         engineState = command(before, activeTeamId)
+        const afterPublic = getPublicAuctionState(engineState)
+        announcementId += 1
         set({
-          auction: getPublicAuctionState(engineState),
+          auction: afterPublic,
           lastResult: resultAfterAction(before, engineState),
+          announcementEvent: eventAfterPublicAction(
+            beforePublic,
+            afterPublic,
+            action,
+            activeTeamId,
+          ),
+          announcementId,
           tournament: tournamentFromAuction(),
           feedback: null,
         })
@@ -161,6 +187,9 @@ export function createAuctionHarnessStore(
       lastAiDecision: null,
       tournament: null,
       feedback: null,
+      announcementEvent: null,
+      announcementId,
+      publicAiPersonalities: {},
       gameId,
       createGame: (seed = initialSeed ?? Date.now()) => {
         gameId += 1
@@ -176,27 +205,49 @@ export function createAuctionHarnessStore(
           lastAiDecision: null,
           tournament: null,
           feedback: null,
+          announcementEvent: null,
+          announcementId,
+          publicAiPersonalities: {},
           gameId,
         })
       },
       startAuction: () => {
         if (pendingPool === null) return
         engineState = startRound1Auction(pendingPool, DEFAULT_PARTICIPANTS)
+        const publicState = getPublicAuctionState(engineState)
+        const turn = getTurnContext(publicState)
+        const publicAiPersonalities = Object.fromEntries(
+          Object.entries(engineState.aiPersonalities).flatMap(([teamId, personality]) =>
+            personality === undefined
+              ? []
+              : [[teamId, getPublicAIPersonalityLabel(personality)]],
+          ),
+        )
+        announcementId += 1
         set({
           stage: 'AUCTION',
-          auction: getPublicAuctionState(engineState),
+          auction: publicState,
           lastResult: null,
           lastAiDecision: null,
           tournament: null,
           feedback: null,
+          announcementEvent: turn === null || publicState.currentCard === null ? null : {
+            type: 'PLAYER_REVEAL',
+            player: publicState.currentCard.player,
+            round: publicState.round,
+            turn,
+          },
+          announcementId,
+          publicAiPersonalities,
         })
       },
       bid: (amount) => applyEngineCommand(
         (state, teamId) => placeBid(state, teamId, amount),
+        'BID',
         'HUMAN_LOCAL',
       ),
-      pass: () => applyEngineCommand(passTurn, 'HUMAN_LOCAL'),
-      notInterested: () => applyEngineCommand(markNotInterested, 'HUMAN_LOCAL'),
+      pass: () => applyEngineCommand(passTurn, 'PASS', 'HUMAN_LOCAL'),
+      notInterested: () => applyEngineCommand(markNotInterested, 'NOT_INTERESTED', 'HUMAN_LOCAL'),
       actForAI: (expectedTurn) => {
         if (
           engineState === null ||
@@ -226,10 +277,20 @@ export function createAuctionHarnessStore(
             : evaluation.action.type === 'PASS'
               ? passTurn(before, expectedTurn.teamId)
               : markNotInterested(before, expectedTurn.teamId)
+          const beforePublic = getPublicAuctionState(before)
+          const afterPublic = getPublicAuctionState(engineState)
+          announcementId += 1
           set({
-            auction: getPublicAuctionState(engineState),
+            auction: afterPublic,
             lastResult: resultAfterAction(before, engineState),
             lastAiDecision: evaluation,
+            announcementEvent: eventAfterPublicAction(
+              beforePublic,
+              afterPublic,
+              evaluation.action.type,
+              expectedTurn.teamId,
+            ),
+            announcementId,
             tournament: tournamentFromAuction(),
             feedback: null,
           })
@@ -243,15 +304,36 @@ export function createAuctionHarnessStore(
         try {
           engineState = advanceTurnTimer(before, 1)
           const timerResult = resultAfterAction(before, engineState)
+          const afterPublic = getPublicAuctionState(engineState)
+          const timedOut = before.turnTimer?.remainingSeconds === 1
+          if (timedOut) announcementId += 1
           set({
-            auction: getPublicAuctionState(engineState),
+            auction: afterPublic,
             ...(timerResult === null ? {} : { lastResult: timerResult }),
+            ...(timedOut ? {
+              announcementEvent: eventAfterPublicAction(
+                getPublicAuctionState(before), afterPublic, 'PASS',
+                before.currentCard!.activeTeamId, true,
+              ),
+              announcementId,
+            } : {}),
             tournament: tournamentFromAuction(),
             feedback: null,
           })
         } catch (error) {
           set({ feedback: friendlyError(error) })
         }
+      },
+      advanceAnnouncement: (expectedAnnouncementId) => {
+        if (
+          engineState === null ||
+          expectedAnnouncementId !== announcementId
+        ) return
+        announcementId += 1
+        set({
+          announcementEvent: eventAfterResultHold(getPublicAuctionState(engineState)),
+          announcementId,
+        })
       },
     }
   })
